@@ -33,6 +33,6 @@ services:
         value: "true"
       # Set to your Vercel URL after the frontend is deployed (used in email tracking links and CORS).
       - key: FRONTEND_ORIGIN
-        value: https://swiftship.vercel.app
+        value: https://swiftship-nu.vercel.app
       - key: RAILS_MAX_THREADS
         value: "3"

@@ -11,3 +11,4 @@ backend/storage/*
 # Rails secrets – never commit
 backend/config/master.key
 backend/.env*
+.vercel/
