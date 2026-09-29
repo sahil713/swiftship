@@ -1,0 +1,13 @@
+.env
+frontend/node_modules/
+frontend/dist/
+backend/log/*
+backend/tmp/*
+backend/storage/*
+!backend/log/.keep
+!backend/tmp/.keep
+!backend/storage/.keep
+
+# Rails secrets – never commit
+backend/config/master.key
+backend/.env*

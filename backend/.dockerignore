@@ -1,0 +1,11 @@
+/.git
+/log/*
+/tmp/*
+/storage/*
+!/log/.keep
+!/tmp/.keep
+!/storage/.keep
+/test
+/.env*
+/config/master.key
+Dockerfile.dev

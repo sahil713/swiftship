@@ -1,0 +1,373 @@
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { AnimatePresence, motion } from "framer-motion";
+import { ArrowLeft, ArrowRight, CheckCircle2, Info, Loader2, MapPin, PackageCheck } from "lucide-react";
+import { api } from "../lib/api.js";
+import { useApi } from "../lib/hooks.js";
+import { date, money } from "../lib/format.js";
+import { serviceIcon } from "../lib/serviceIcons.js";
+import { useAuth } from "../context/AuthContext.jsx";
+import { Alert, Field } from "../components/ui.jsx";
+
+const STEPS = ["Route & service", "Your item", "Addresses", "Review"];
+const today = () => new Date().toISOString().slice(0, 10);
+
+const INITIAL = {
+  service_id: "", collection_postcode: "", delivery_postcode: "", collection_date: "",
+  item_description: "", quantity: 1, weight_kg: "", length_cm: "", width_cm: "", height_cm: "", fragile: false,
+  collection_contact_name: "", collection_phone: "", collection_email: "", collection_line1: "", collection_line2: "", collection_city: "",
+  delivery_contact_name: "", delivery_phone: "", delivery_email: "", delivery_line1: "", delivery_line2: "", delivery_city: "",
+  collection_instructions: "", delivery_instructions: "",
+};
+
+function useDebounced(value, ms) {
+  const [v, setV] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setV(value), ms);
+    return () => clearTimeout(t);
+  }, [value, ms]);
+  return v;
+}
+
+/** Postcode input that checks the service area as the user types. */
+function PostcodeField({ id, label, value, onChange, onResult }) {
+  const debounced = useDebounced(value, 450);
+  const [check, setCheck] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (debounced.replace(/\s/g, "").length < 5) {
+      setCheck(null);
+      onResult?.(null);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    api("/postcodes/check", { params: { postcode: debounced } })
+      .then((r) => !cancelled && (setCheck(r), onResult?.(r)))
+      .catch(() => !cancelled && setCheck(null))
+      .finally(() => !cancelled && setLoading(false));
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debounced]);
+
+  const state = check ? (check.ok ? "valid" : "invalid") : "";
+  return (
+    <div className="field">
+      <label htmlFor={id}>{label}</label>
+      <div style={{ position: "relative" }}>
+        <input id={id} className={`input ${state}`} value={value} onChange={(e) => onChange(e.target.value.toUpperCase())} placeholder="e.g. SW1A 1AA" autoComplete="postal-code" aria-invalid={check && !check.ok} aria-describedby={`${id}-msg`} required />
+        {loading && <Loader2 size={18} className="spin-icon" style={{ position: "absolute", right: 12, top: 14, animation: "spin 1s linear infinite", color: "var(--text-muted)" }} />}
+      </div>
+      <span id={`${id}-msg`} className={check ? (check.ok ? "ok-text" : "error-text") : "hint"} aria-live="polite">
+        {check ? (check.ok ? `✓ ${check.region}${check.district ? ` · ${check.district}` : ""}${check.surcharge_pence ? ` · +${money(check.surcharge_pence)} area surcharge` : ""}` : check.message) : "UK postcodes only"}
+      </span>
+    </div>
+  );
+}
+
+function PriceSummary({ quote, loading, service }) {
+  return (
+    <aside className="card sticky-summary" aria-live="polite">
+      <div className="row-between" style={{ marginBottom: 12 }}>
+        <h3 style={{ margin: 0 }}>Your quote</h3>
+        {loading && <Loader2 size={18} style={{ animation: "spin 1s linear infinite", color: "var(--text-muted)" }} aria-label="Updating" />}
+      </div>
+      {!quote ? (
+        <p className="muted small">Enter postcodes and choose a service to see your price.</p>
+      ) : !quote.ok ? (
+        <Alert type="error">{quote.errors.join(" ")}</Alert>
+      ) : (
+        <>
+          <ul className="price-lines">
+            {quote.lines.map((l) => <li key={l.label}><span>{l.label}</span><span>{money(l.amount_pence)}</span></li>)}
+          </ul>
+          <div className="price-total">
+            <span>Estimated total<div className="small muted" style={{ fontWeight: 500 }}>inc. VAT</div></span>
+            <motion.span key={quote.total_pence} className="amount" initial={{ scale: 1.15, color: "var(--accent-text)" }} animate={{ scale: 1, color: "var(--text)" }}>{money(quote.total_pence)}</motion.span>
+          </div>
+          <dl className="dl small" style={{ marginTop: 16 }}>
+            {service && <><dt>Service</dt><dd>{service.name}</dd></>}
+            <dt>Chargeable weight</dt><dd>{quote.chargeable_weight_kg} kg</dd>
+            <dt>Est. delivery</dt><dd>{date(quote.estimated_delivery_date, { weekday: "short", day: "numeric", month: "short" })}</dd>
+          </dl>
+          {quote.warnings.length > 0 && (
+            <div style={{ marginTop: 14 }}>
+              <Alert type="warning">{quote.warnings.map((w) => <div key={w}>{w}</div>)}</Alert>
+            </div>
+          )}
+          <p className="small muted" style={{ marginTop: 14, marginBottom: 0 }}>
+            <Info size={14} style={{ display: "inline", verticalAlign: -2 }} /> This is an estimate. The price may change if item details are incomplete or inaccurate. You'll see the confirmed price before paying.
+          </p>
+        </>
+      )}
+    </aside>
+  );
+}
+
+function AddressBlock({ prefix, title, form, set, saved, onPick, checkResult }) {
+  return (
+    <fieldset className="card">
+      <legend style={{ display: "contents" }}><h3>{title}</h3></legend>
+      <div className="row" style={{ marginBottom: 12 }}>
+        <MapPin size={16} color="var(--accent)" />
+        <span className="small"><strong className="mono">{form[`${prefix}_postcode`]}</strong>{checkResult?.district ? ` · ${checkResult.district}` : ""}</span>
+      </div>
+      {saved?.length > 0 && (
+        <Field label="Use a saved address" htmlFor={`${prefix}-saved`}>
+          <select id={`${prefix}-saved`} className="select" defaultValue="" onChange={(e) => onPick(prefix, saved.find((a) => String(a.id) === e.target.value))}>
+            <option value="">Choose…</option>
+            {saved.map((a) => <option key={a.id} value={a.id}>{a.label || a.line1}, {a.postcode}</option>)}
+          </select>
+        </Field>
+      )}
+      <div className="form-grid" style={{ marginTop: 12 }}>
+        <Field label="Contact name" htmlFor={`${prefix}-name`}><input id={`${prefix}-name`} className="input" value={form[`${prefix}_contact_name`]} onChange={set(`${prefix}_contact_name`)} required autoComplete="name" /></Field>
+        <Field label="Phone" htmlFor={`${prefix}-phone`}><input id={`${prefix}-phone`} type="tel" className="input" value={form[`${prefix}_phone`]} onChange={set(`${prefix}_phone`)} required pattern="[+]?[0-9 \(\)\-]{10,20}" title="A UK phone number" autoComplete="tel" /></Field>
+        <Field label="Email" htmlFor={`${prefix}-email`} className="span-all"><input id={`${prefix}-email`} type="email" className="input" value={form[`${prefix}_email`]} onChange={set(`${prefix}_email`)} required autoComplete="email" /></Field>
+        <Field label="Address line 1" htmlFor={`${prefix}-l1`} className="span-all"><input id={`${prefix}-l1`} className="input" value={form[`${prefix}_line1`]} onChange={set(`${prefix}_line1`)} required autoComplete="address-line1" /></Field>
+        <Field label="Address line 2 (optional)" htmlFor={`${prefix}-l2`}><input id={`${prefix}-l2`} className="input" value={form[`${prefix}_line2`]} onChange={set(`${prefix}_line2`)} autoComplete="address-line2" /></Field>
+        <Field label="Town / city" htmlFor={`${prefix}-city`}><input id={`${prefix}-city`} className="input" value={form[`${prefix}_city`]} onChange={set(`${prefix}_city`)} required autoComplete="address-level2" /></Field>
+        <Field label={prefix === "collection" ? "Collection instructions (optional)" : "Delivery instructions (optional)"} htmlFor={`${prefix}-instr`} className="span-all" hint="Access codes, parking, safe place, etc.">
+          <textarea id={`${prefix}-instr`} className="textarea" rows={2} value={form[`${prefix}_instructions`]} onChange={set(`${prefix}_instructions`)} />
+        </Field>
+      </div>
+    </fieldset>
+  );
+}
+
+export default function Quote() {
+  const [params] = useSearchParams();
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const services = useApi("/services").data || [];
+  const saved = useApi(user?.role === "customer" ? "/addresses" : null).data;
+  const [step, setStep] = useState(0);
+  const [form, setForm] = useState(() => {
+    const f = { ...INITIAL };
+    for (const k of ["service_id", "collection_postcode", "delivery_postcode", "weight_kg"]) if (params.get(k)) f[k] = params.get(k);
+    return f;
+  });
+  const [checks, setChecks] = useState({ collection: null, delivery: null });
+  const [quote, setQuote] = useState(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
+  const [agreed, setAgreed] = useState(false);
+  const [submitError, setSubmitError] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+  const topRef = useRef(null);
+
+  useEffect(() => {
+    if (!form.service_id && services.length) setForm((f) => ({ ...f, service_id: String(services[0].id) }));
+  }, [services, form.service_id]);
+
+  // Prefill the sender's details for signed-in customers.
+  useEffect(() => {
+    if (user?.role === "customer") {
+      setForm((f) => ({
+        ...f,
+        collection_contact_name: f.collection_contact_name || user.name,
+        collection_email: f.collection_email || user.email,
+        collection_phone: f.collection_phone || user.phone || "",
+      }));
+    }
+  }, [user]);
+
+  const set = (k) => (e) => {
+    const v = e.target.type === "checkbox" ? e.target.checked : e.target.value;
+    setForm((f) => ({ ...f, [k]: v }));
+  };
+
+  const pricingInputs = useMemo(
+    () => ({
+      service_id: form.service_id, collection_postcode: form.collection_postcode, delivery_postcode: form.delivery_postcode,
+      quantity: form.quantity, weight_kg: form.weight_kg, length_cm: form.length_cm, width_cm: form.width_cm,
+      height_cm: form.height_cm, fragile: form.fragile, collection_date: form.collection_date,
+    }),
+    [form.service_id, form.collection_postcode, form.delivery_postcode, form.quantity, form.weight_kg, form.length_cm, form.width_cm, form.height_cm, form.fragile, form.collection_date]
+  );
+  const debouncedInputs = useDebounced(pricingInputs, 500);
+
+  useEffect(() => {
+    const { collection_postcode: c, delivery_postcode: d, service_id } = debouncedInputs;
+    if (!service_id || c.replace(/\s/g, "").length < 5 || d.replace(/\s/g, "").length < 5) return setQuote(null);
+    let cancelled = false;
+    setQuoteLoading(true);
+    api("/quotes", { method: "POST", body: debouncedInputs })
+      .then((q) => !cancelled && setQuote(q))
+      .catch((err) => !cancelled && setQuote({ ok: false, errors: [err.message], warnings: [], lines: [] }))
+      .finally(() => !cancelled && setQuoteLoading(false));
+    return () => { cancelled = true; };
+  }, [debouncedInputs]);
+
+  const selectedService = services.find((s) => String(s.id) === String(form.service_id));
+
+  const pickAddress = (prefix, a) => {
+    if (!a) return;
+    setForm((f) => ({
+      ...f,
+      [`${prefix}_line1`]: a.line1, [`${prefix}_line2`]: a.line2 || "", [`${prefix}_city`]: a.city, [`${prefix}_postcode`]: a.postcode,
+      [`${prefix}_contact_name`]: a.contact_name || f[`${prefix}_contact_name`], [`${prefix}_phone`]: a.phone || f[`${prefix}_phone`],
+    }));
+  };
+
+  const canContinue = [
+    checks.collection?.ok && checks.delivery?.ok && form.service_id && quote?.ok,
+    form.item_description.trim() && form.quantity >= 1 && quote?.ok,
+    true,
+    agreed && quote?.ok,
+  ][step];
+
+  const go = (delta) => (e) => {
+    e?.preventDefault();
+    setStep((s) => Math.min(Math.max(s + delta, 0), STEPS.length - 1));
+    topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      const res = await api("/bookings", { method: "POST", body: { booking: form } });
+      const ref = res.booking.reference;
+      navigate(user?.role === "customer" ? `/account/orders/${ref}?new=1` : `/orders/${ref}?token=${res.guest_token}&new=1`);
+    } catch (err) {
+      setSubmitError(err.message);
+      setSubmitting(false);
+    }
+  };
+
+  const onStepSubmit = step === STEPS.length - 1 ? submit : go(1);
+
+  return (
+    <section className="container" style={{ paddingBottom: 72 }} ref={topRef}>
+      <div className="page-head" style={{ paddingInline: 0 }}>
+        <div className="eyebrow">Quote & book</div>
+        <h1>Get a price and book a delivery</h1>
+        <p className="lead">Prices update as you type. {user ? "" : <>Booking as a guest — <Link to="/login" state={{ from: "/quote" }}>sign in</Link> to use saved addresses.</>}</p>
+      </div>
+
+      <ol className="steps" aria-label="Booking progress">
+        {STEPS.map((s, i) => (
+          <li key={s} className={i < step ? "done" : i === step ? "current" : ""} aria-current={i === step ? "step" : undefined}>
+            <div className="bar"><span style={{ width: i <= step ? "100%" : "0%" }} /></div>
+            <span className="name">{i + 1}. {s}</span>
+          </li>
+        ))}
+      </ol>
+
+      <div className="booking-layout">
+        <form onSubmit={onStepSubmit} noValidate={false}>
+          <AnimatePresence mode="wait">
+            <motion.div key={step} initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -24 }} transition={{ duration: 0.25 }} className="stack">
+              {step === 0 && (
+                <>
+                  <div className="card">
+                    <h3>Where is it going?</h3>
+                    <div className="form-grid">
+                      <PostcodeField id="collection_postcode" label="Collection postcode" value={form.collection_postcode} onChange={(v) => setForm((f) => ({ ...f, collection_postcode: v }))} onResult={(r) => setChecks((c) => ({ ...c, collection: r }))} />
+                      <PostcodeField id="delivery_postcode" label="Delivery postcode" value={form.delivery_postcode} onChange={(v) => setForm((f) => ({ ...f, delivery_postcode: v }))} onResult={(r) => setChecks((c) => ({ ...c, delivery: r }))} />
+                      <Field label="Preferred collection date" htmlFor="collection_date" hint="Weekend collections carry a surcharge">
+                        <input id="collection_date" type="date" className="input" min={today()} value={form.collection_date} onChange={set("collection_date")} required />
+                      </Field>
+                    </div>
+                  </div>
+                  <fieldset className="card">
+                    <legend style={{ display: "contents" }}><h3>Choose a service</h3></legend>
+                    <div className="option-grid">
+                      {services.map((s) => {
+                        const Icon = serviceIcon(s.slug);
+                        return (
+                          <label key={s.id} className="option">
+                            <input type="radio" name="service" value={s.id} checked={String(form.service_id) === String(s.id)} onChange={set("service_id")} />
+                            <div className="opt-title"><span><Icon size={18} style={{ display: "inline", verticalAlign: -3, color: "var(--accent)" }} /> {s.name}</span><span>{money(s.base_price_pence)}+</span></div>
+                            <div className="small muted">{s.transit_time}</div>
+                            <div className="small" style={{ marginTop: 6, color: "var(--text-2)" }}>{s.tagline}</div>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </fieldset>
+                </>
+              )}
+
+              {step === 1 && (
+                <div className="card">
+                  <h3>Tell us about your item</h3>
+                  <p className="small muted">The more accurate these are, the more accurate your price. Weight and size are optional, but quotes without them need manual confirmation.</p>
+                  <div className="form-grid">
+                    <Field label="What are you sending?" htmlFor="item_description" className="span-all" hint="e.g. Box of books, 42-inch TV, wooden chair">
+                      <input id="item_description" className="input" value={form.item_description} onChange={set("item_description")} required maxLength={200} />
+                    </Field>
+                    <Field label="Quantity" htmlFor="quantity"><input id="quantity" type="number" min={1} max={100} className="input" value={form.quantity} onChange={set("quantity")} required /></Field>
+                    <Field label="Weight per item (kg)" htmlFor="weight_kg"><input id="weight_kg" type="number" min="0.1" step="0.1" inputMode="decimal" className="input" value={form.weight_kg} onChange={set("weight_kg")} /></Field>
+                    <Field label="Length (cm)" htmlFor="length_cm"><input id="length_cm" type="number" min="1" className="input" value={form.length_cm} onChange={set("length_cm")} /></Field>
+                    <Field label="Width (cm)" htmlFor="width_cm"><input id="width_cm" type="number" min="1" className="input" value={form.width_cm} onChange={set("width_cm")} /></Field>
+                    <Field label="Height (cm)" htmlFor="height_cm"><input id="height_cm" type="number" min="1" className="input" value={form.height_cm} onChange={set("height_cm")} /></Field>
+                    <label className="checkbox span-all">
+                      <input type="checkbox" checked={form.fragile} onChange={set("fragile")} />
+                      <span><strong>This item is fragile</strong><br /><span className="small muted">Extra handling care. Glass, ceramics, electronics, artwork.</span></span>
+                    </label>
+                  </div>
+                  <p className="small muted" style={{ marginTop: 16, marginBottom: 0 }}>Please check our <Link to="/legal/prohibited-items" target="_blank">prohibited items</Link> list before booking.</p>
+                </div>
+              )}
+
+              {step === 2 && (
+                <>
+                  <AddressBlock prefix="collection" title="Collect from" form={form} set={set} saved={saved} onPick={pickAddress} checkResult={checks.collection} />
+                  <AddressBlock prefix="delivery" title="Deliver to" form={form} set={set} saved={saved} onPick={pickAddress} checkResult={checks.delivery} />
+                </>
+              )}
+
+              {step === 3 && (
+                <div className="card">
+                  <h3>Review your booking</h3>
+                  <div className="grid-2" style={{ gap: 16 }}>
+                    <div>
+                      <div className="small muted">Collect from</div>
+                      <p style={{ fontWeight: 600 }}>{form.collection_contact_name}<br />{form.collection_line1}{form.collection_line2 && `, ${form.collection_line2}`}<br />{form.collection_city} {form.collection_postcode}<br /><span className="small muted">{form.collection_phone} · {form.collection_email}</span></p>
+                    </div>
+                    <div>
+                      <div className="small muted">Deliver to</div>
+                      <p style={{ fontWeight: 600 }}>{form.delivery_contact_name}<br />{form.delivery_line1}{form.delivery_line2 && `, ${form.delivery_line2}`}<br />{form.delivery_city} {form.delivery_postcode}<br /><span className="small muted">{form.delivery_phone} · {form.delivery_email}</span></p>
+                    </div>
+                  </div>
+                  <dl className="dl">
+                    <dt>Service</dt><dd>{selectedService?.name}</dd>
+                    <dt>Item</dt><dd>{form.quantity} × {form.item_description}{form.fragile ? " (fragile)" : ""}</dd>
+                    <dt>Weight / size</dt><dd>{form.weight_kg ? `${form.weight_kg} kg` : "Not given"}{form.length_cm && form.width_cm && form.height_cm ? ` · ${form.length_cm}×${form.width_cm}×${form.height_cm} cm` : ""}</dd>
+                    <dt>Collection</dt><dd>{date(form.collection_date, { weekday: "long", day: "numeric", month: "long" })}</dd>
+                  </dl>
+                  <hr className="divider" />
+                  <Alert type="info" title="What happens next">
+                    {form.weight_kg && !quote?.needs_review
+                      ? "Your price will be confirmed straight away and you can pay online to secure your booking."
+                      : "Our team will review your details and confirm the final price — usually within an hour during opening times. We'll email you when it's ready to pay."}
+                  </Alert>
+                  <label className="checkbox" style={{ marginTop: 16 }}>
+                    <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} required />
+                    <span>I confirm my item isn't on the <Link to="/legal/prohibited-items" target="_blank">prohibited list</Link> and I agree to the <Link to="/legal/terms" target="_blank">terms of service</Link>.</span>
+                  </label>
+                  {submitError && <div style={{ marginTop: 16 }}><Alert type="error">{submitError}</Alert></div>}
+                </div>
+              )}
+            </motion.div>
+          </AnimatePresence>
+
+          <div className="row-between" style={{ marginTop: 20 }}>
+            {step > 0 ? <button type="button" className="btn btn-ghost" onClick={go(-1)}><ArrowLeft size={16} /> Back</button> : <span />}
+            {step < STEPS.length - 1 ? (
+              <button className="btn btn-primary btn-lg" disabled={!canContinue}>Continue <ArrowRight size={18} /></button>
+            ) : (
+              <button className="btn btn-primary btn-lg" disabled={!canContinue || submitting}>
+                {submitting ? "Submitting…" : quote?.needs_review || !form.weight_kg ? <>Request quote <CheckCircle2 size={18} /></> : <>Confirm & continue to payment <PackageCheck size={18} /></>}
+              </button>
+            )}
+          </div>
+        </form>
+        <PriceSummary quote={quote} loading={quoteLoading} service={selectedService} />
+      </div>
+    </section>
+  );
+}

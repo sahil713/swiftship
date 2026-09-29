@@ -1,0 +1,38 @@
+# Render Blueprint – creates the Rails API and its PostgreSQL database.
+# Render dashboard → New → Blueprint → pick this repository.
+databases:
+  - name: swiftship-db
+    plan: free
+    region: frankfurt
+    databaseName: swiftship
+    user: swiftship
+
+services:
+  - type: web
+    name: swiftship-api
+    runtime: docker
+    plan: free
+    region: frankfurt
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /up
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: swiftship-db
+          property: connectionString
+      - key: SECRET_KEY_BASE
+        generateValue: true
+      - key: JWT_SECRET
+        generateValue: true
+      # Password for the seeded admin/ops/driver/customer accounts – view it under Environment in the dashboard.
+      - key: SEED_PASSWORD
+        generateValue: true
+      - key: SEED_ON_BOOT
+        value: "true"
+      # Set to your Vercel URL after the frontend is deployed (used in email tracking links and CORS).
+      - key: FRONTEND_ORIGIN
+        value: https://swiftship.vercel.app
+      - key: RAILS_MAX_THREADS
+        value: "3"

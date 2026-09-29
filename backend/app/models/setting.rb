@@ -1,0 +1,24 @@
+class Setting < ApplicationRecord
+  DEFAULTS = {
+    "northern_ireland_enabled" => true,
+    "auto_confirm_quotes" => true,
+    "support_email" => "help@swiftship.example",
+    "support_phone" => "0330 123 4567"
+  }.freeze
+
+  validates :key, presence: true, uniqueness: true, inclusion: { in: DEFAULTS.keys }
+
+  def self.get(key)
+    record = find_by(key: key.to_s)
+    record.nil? ? DEFAULTS.fetch(key.to_s) : record.value
+  end
+
+  def self.set(key, value)
+    record = find_or_initialize_by(key: key.to_s)
+    record.update!(value:)
+  end
+
+  def self.all_values
+    DEFAULTS.merge(all.to_h { [_1.key, _1.value] })
+  end
+end

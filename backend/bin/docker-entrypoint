@@ -1,0 +1,10 @@
+#!/bin/bash -e
+# Prepare the database (create + migrate) before the server starts.
+# Set SEED_ON_BOOT=true to also load the idempotent seed data (regions, services, demo users).
+if [ "${@: -2:1}" == "server" ] || [ "$2" == "server" ]; then
+  ./bin/rails db:prepare
+  if [ "${SEED_ON_BOOT}" == "true" ]; then
+    ./bin/rails db:seed
+  fi
+fi
+exec "${@}"
