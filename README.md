@@ -40,6 +40,27 @@ docker compose exec -e RAILS_ENV=test backend bin/rails test               # bac
 ls backend/tmp/mails                                                       # emails "sent" in development
 ```
 
+## Deploying (Render + Vercel)
+
+**1. Push to GitHub.** Create an empty repository on GitHub, then:
+```bash
+git remote add origin https://github.com/<you>/swiftship.git && git push -u origin main
+```
+
+**2. Backend and database on Render.** In the Render dashboard, choose **New → Blueprint**, pick the repository and click **Apply**. `render.yaml` creates:
+- `swiftship-db` (PostgreSQL)
+- `swiftship-api` (the Rails API, run from `backend/Dockerfile`), with every secret generated for you.
+
+After the first deploy, note the service URL (e.g. `https://swiftship-api.onrender.com`). The seeded accounts use the password in **swiftship-api → Environment → SEED_PASSWORD**.
+
+**3. Frontend on Vercel.** If your Render URL isn't `https://swiftship-api.onrender.com`, put your URL in the `/api` rewrite in `frontend/vercel.json`, then commit and push. In Vercel, choose **Add New → Project**, import the repository and set **Root Directory** to `frontend`. Vite is detected automatically. The frontend calls `/api/...` on its own domain, and Vercel forwards those calls to Render, so no CORS setup is needed.
+
+**4. Point Render at the frontend.** In Render, set `FRONTEND_ORIGIN` to your Vercel URL so email tracking links point there.
+
+Free-tier notes:
+- Render's free web service sleeps when idle, so the first request after a pause can take about a minute.
+- Render's free PostgreSQL database expires after 30 days. Upgrade the plan to keep the data.
+
 ## How it works
 
 **Booking lifecycle:** `quote_requested → awaiting_payment → booked → collected → in_transit → out_for_delivery → delivered`, plus `failed_delivery`, `exception` and `cancelled`. Every change is written to `status_events` with a timestamp, the user and an optional note or location. Allowed transitions are defined in `Booking::TRANSITIONS`.
