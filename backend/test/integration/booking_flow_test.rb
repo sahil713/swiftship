@@ -1,7 +1,10 @@
 require "test_helper"
 
 class BookingFlowTest < ActionDispatch::IntegrationTest
-  setup { Rails.application.load_seed }
+  setup do
+    Rails.application.load_seed
+    Setting.set(:pricing_enabled, true) # most tests cover the priced flow; phase 1 is tested separately
+  end
 
   def booking_params(overrides = {})
     {
@@ -109,5 +112,51 @@ class BookingFlowTest < ActionDispatch::IntegrationTest
     post "/api/v1/admin/bookings/#{booking.reference}/status", params: { status: "delivered" }, headers: auth_headers("admin@swiftship.example"), as: :json
     assert_response :unprocessable_entity
     assert_match(/cannot change/, json["error"])
+  end
+
+  test "phase 1: with pricing disabled, requests are saved without a price and emailed to the admin" do
+    Setting.set(:pricing_enabled, false)
+    Setting.set(:enquiry_notification_email, "ops-inbox@example.com")
+    ActionMailer::Base.deliveries.clear
+
+    post "/api/v1/quotes", params: { service_id: Service.first.id, collection_postcode: "LS1 1UR", delivery_postcode: "YO1 7HH" }, as: :json
+    assert_response :forbidden, "the live price calculator must be switched off"
+
+    post "/api/v1/bookings", params: { booking: booking_params(special_requirements: "Two-person lift, 3rd floor no lift") }, as: :json
+    assert_response :created
+    booking = Booking.find_by!(reference: json.dig("booking", "reference"))
+    assert_equal "quote_requested", booking.status
+    assert_nil booking.estimated_price_pence
+    assert_nil booking.confirmed_price_pence
+    assert_nil json.dig("booking", "price_pence")
+    assert_equal "Two-person lift, 3rd floor no lift", booking.special_requirements
+
+    mail = ActionMailer::Base.deliveries.find { _1.to == ["ops-inbox@example.com"] }
+    assert mail, "admin should receive the enquiry email"
+    assert_equal [booking.customer_email], mail.reply_to
+    assert_match booking.reference, mail.subject
+    html = mail.html_part.decoded
+    text = mail.text_part.decoded
+    ["Guest Sender", "07700 900111", "1 High Street", "LS1 1UR", "YO1 7HH", "Box of plates", "Two-person lift, 3rd floor no lift"].each do |detail|
+      assert_includes text, detail
+      assert_includes html, ERB::Util.h(detail)
+    end
+    refute_match(/£/, text, "admin email shouldn't contain an automatic price")
+    assert booking.notifications.exists?(recipient: "ops-inbox@example.com", status: "sent")
+  end
+
+  test "phase 1: still rejects postcodes outside the service area" do
+    Setting.set(:pricing_enabled, false)
+    post "/api/v1/bookings", params: { booking: booking_params(delivery_postcode: "D02 X285") }, as: :json
+    assert_response :unprocessable_entity
+    assert_match(/Republic of Ireland/, json["error"])
+  end
+
+  test "phase 1: admin emails go to all admins when no address is configured" do
+    Setting.set(:pricing_enabled, false)
+    ActionMailer::Base.deliveries.clear
+    post "/api/v1/bookings", params: { booking: booking_params }, as: :json
+    assert_response :created
+    assert ActionMailer::Base.deliveries.any? { _1.to.include?("admin@swiftship.example") }
   end
 end

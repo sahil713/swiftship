@@ -10,6 +10,7 @@ import { Reveal } from "../components/ui.jsx";
 import { useApi } from "../lib/hooks.js";
 import { money } from "../lib/format.js";
 import { serviceIcon } from "../lib/serviceIcons.js";
+import { usePricingEnabled } from "../lib/site.js";
 
 const HEADLINE = ["Deliveries", "across", "the", "UK,", { text: "done right.", accent: true }];
 const CITIES = ["London", "Manchester", "Birmingham", "Glasgow", "Edinburgh", "Cardiff", "Belfast", "Leeds", "Bristol", "Newcastle", "Liverpool", "Inverness", "Aberdeen", "Norwich", "Plymouth", "Southampton"];
@@ -127,6 +128,7 @@ function HowItWorks() {
 }
 
 function ServicesPreview({ services }) {
+  const pricing = usePricingEnabled();
   return (
     <section className="section section-alt" aria-labelledby="services-title">
       <div className="container">
@@ -148,7 +150,7 @@ function ServicesPreview({ services }) {
                   <p className="muted small">{s.tagline}</p>
                   <div className="price-from">
                     <span className="small muted">{s.transit_time}</span>
-                    <span><span className="small muted">from </span><strong>{money(s.base_price_pence)}</strong></span>
+                    {pricing ? <span><span className="small muted">from </span><strong>{money(s.base_price_pence)}</strong></span> : <span className="small" style={{ fontWeight: 700, color: "var(--accent-text)" }}>Request a quote →</span>}
                   </div>
                 </Link>
               </Reveal>

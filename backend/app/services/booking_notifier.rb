@@ -28,7 +28,7 @@ class BookingNotifier
 
   def self.deliver_email(booking, to, subject, body)
     BookingMailer.update_email(to:, subject:, body:).deliver_now
-    booking.notifications.create!(channel: "email", recipient: to, subject:, body:, status: "sent")
+    booking.notifications.create!(channel: "email", recipient: to, subject:, body:, status: ApplicationMailer.delivers? ? "sent" : "not_sent")
   rescue StandardError => e
     booking.notifications.create!(channel: "email", recipient: to, subject:, body:, status: "failed")
     Rails.logger.error("Email failed for #{booking.reference}: #{e.message}")

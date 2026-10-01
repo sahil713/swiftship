@@ -4,6 +4,7 @@ import { Alert, Badge, Reveal, Spinner } from "../components/ui.jsx";
 import { useApi } from "../lib/hooks.js";
 import { api } from "../lib/api.js";
 import { money } from "../lib/format.js";
+import { usePricingEnabled } from "../lib/site.js";
 
 const ZONE_TONE = { mainland: "good", remote: "warning", northern_ireland: "info", excluded: "muted" };
 const ZONE_LABEL = { mainland: "UK mainland", remote: "Remote area", northern_ireland: "Northern Ireland", excluded: "Not served" };
@@ -12,6 +13,7 @@ export default function Areas() {
   const { data, loading } = useApi("/areas");
   const [pc, setPc] = useState("");
   const [check, setCheck] = useState(null);
+  const pricing = usePricingEnabled();
 
   const submit = async (e) => {
     e.preventDefault();
@@ -37,7 +39,7 @@ export default function Areas() {
           <div style={{ marginTop: 16, maxWidth: 560 }}>
             <Alert type={check.ok ? "success" : "error"}>
               {check.message}
-              {check.ok && check.surcharge_pence > 0 && ` An area surcharge of ${money(check.surcharge_pence)} applies.`}
+              {pricing && check.ok && check.surcharge_pence > 0 && ` An area surcharge of ${money(check.surcharge_pence)} applies.`}
               {check.ok && check.extra_transit_days > 0 && ` Allow ${check.extra_transit_days} extra working day(s).`}
             </Alert>
           </div>
@@ -58,7 +60,7 @@ export default function Areas() {
                     </div>
                     <div className="row" style={{ marginBottom: 12 }}>
                       <Badge tone={ZONE_TONE[a.zone]}>{niOff ? "Currently paused" : ZONE_LABEL[a.zone]}</Badge>
-                      {a.surcharge_pence > 0 && <Badge tone="neutral" plain>+{money(a.surcharge_pence)}</Badge>}
+                      {pricing && a.surcharge_pence > 0 && <Badge tone="neutral" plain>+{money(a.surcharge_pence)}</Badge>}
                       {a.extra_transit_days > 0 && <Badge tone="neutral" plain>+{a.extra_transit_days} day{a.extra_transit_days > 1 ? "s" : ""}</Badge>}
                     </div>
                     <p className="small mono muted" style={{ marginBottom: 8 }}>{a.postcode_areas.join(" · ")}</p>

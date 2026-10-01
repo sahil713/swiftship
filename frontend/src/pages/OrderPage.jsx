@@ -8,6 +8,7 @@ import { date, dateTime, humanize, money } from "../lib/format.js";
 import { Alert, Badge, Field, Modal, Spinner, StatusBadge } from "../components/ui.jsx";
 import { EventTimeline, ProgressTrack } from "../components/StatusTimeline.jsx";
 import { useToast } from "../components/Toast.jsx";
+import { usePricingEnabled } from "../lib/site.js";
 
 function PaymentForm({ booking, token, onPaid }) {
   const [card, setCard] = useState({ card_number: "", expiry: "", cvc: "", name: "" });
@@ -93,6 +94,7 @@ export default function OrderPage({ embedded = false }) {
   const { data, error, loading, reload, setData } = useApi(`/bookings/${reference}`, token ? { token } : undefined);
   const [modal, setModal] = useState(null);
   const [justPaid, setJustPaid] = useState(false);
+  const pricing = usePricingEnabled();
 
   if (loading && !data) return <Spinner />;
   if (error) {
@@ -142,7 +144,7 @@ export default function OrderPage({ embedded = false }) {
 
       <div className="booking-layout">
         <div className="stack">
-          {b.payable && <PaymentForm booking={b} token={token} onPaid={(nb) => { setData({ booking: nb }); setJustPaid(true); window.scrollTo({ top: 0, behavior: "smooth" }); }} />}
+          {pricing && b.payable && <PaymentForm booking={b} token={token} onPaid={(nb) => { setData({ booking: nb }); setJustPaid(true); window.scrollTo({ top: 0, behavior: "smooth" }); }} />}
 
           {!["quote_requested", "awaiting_payment", "cancelled"].includes(b.status) && (
             <div className="card">
@@ -197,7 +199,7 @@ export default function OrderPage({ embedded = false }) {
         </div>
 
         <aside className="stack sticky-summary">
-          <div className="card">
+          {pricing ? <div className="card">
             <h3>{b.confirmed_price_pence ? "Confirmed price" : "Estimated price"}</h3>
             <ul className="price-lines">
               {(breakdown.lines || []).map((l) => <li key={l.label}><span>{l.label}</span><span>{money(l.amount_pence)}</span></li>)}
@@ -210,7 +212,12 @@ export default function OrderPage({ embedded = false }) {
             {b.payments.filter((p) => p.refunded_pence > 0).map((p) => (
               <p key={p.id} className="small" style={{ marginTop: 12, marginBottom: 0 }}>Refunded {money(p.refunded_pence)} to {p.card_brand} •••• {p.card_last4}</p>
             ))}
-          </div>
+          </div> : (
+            <div className="card">
+              <h3>Your quotation</h3>
+              <p className="muted small" style={{ margin: 0 }}>Our team will call you to discuss pricing for this request.</p>
+            </div>
+          )}
 
           <div className="card">
             <h3>Need to make a change?</h3>

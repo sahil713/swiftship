@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowLeft, ArrowRight, CheckCircle2, Loader2, MapPin, PackageCheck } from "lucide-react";
+import { ArrowLeft, ArrowRight, CheckCircle2, Loader2, MapPin, PhoneCall, Send } from "lucide-react";
 import { api } from "../lib/api.js";
 import { useApi } from "../lib/hooks.js";
 import { date } from "../lib/format.js";
@@ -17,7 +17,7 @@ const INITIAL = {
   item_description: "", quantity: 1, weight_kg: "", length_cm: "", width_cm: "", height_cm: "", fragile: false,
   collection_contact_name: "", collection_phone: "", collection_email: "", collection_line1: "", collection_line2: "", collection_city: "",
   delivery_contact_name: "", delivery_phone: "", delivery_email: "", delivery_line1: "", delivery_line2: "", delivery_city: "",
-  collection_instructions: "", delivery_instructions: "",
+  collection_instructions: "", delivery_instructions: "", special_requirements: "",
 };
 
 function useDebounced(value, ms) {
@@ -89,7 +89,7 @@ function AddressBlock({ prefix, title, form, set, saved, onPick, checkResult }) 
         <Field label="Address line 1" htmlFor={`${prefix}-l1`} className="span-all"><input id={`${prefix}-l1`} className="input" value={form[`${prefix}_line1`]} onChange={set(`${prefix}_line1`)} required autoComplete="address-line1" /></Field>
         <Field label="Address line 2 (optional)" htmlFor={`${prefix}-l2`}><input id={`${prefix}-l2`} className="input" value={form[`${prefix}_line2`]} onChange={set(`${prefix}_line2`)} autoComplete="address-line2" /></Field>
         <Field label="Town / city" htmlFor={`${prefix}-city`}><input id={`${prefix}-city`} className="input" value={form[`${prefix}_city`]} onChange={set(`${prefix}_city`)} required autoComplete="address-level2" /></Field>
-        <Field label={prefix === "collection" ? "Collection instructions (optional)" : "Delivery instructions (optional)"} htmlFor={`${prefix}-instr`} className="span-all" hint="Access codes, parking, safe place, etc.">
+        <Field label={`Access information at ${prefix === "collection" ? "collection" : "delivery"} (optional)`} htmlFor={`${prefix}-instr`} className="span-all" hint="Stairs or lifts, floor number, parking, gate codes, opening hours, safe place, etc.">
           <textarea id={`${prefix}-instr`} className="textarea" rows={2} value={form[`${prefix}_instructions`]} onChange={set(`${prefix}_instructions`)} />
         </Field>
       </div>
@@ -99,7 +99,6 @@ function AddressBlock({ prefix, title, form, set, saved, onPick, checkResult }) 
 
 export default function Quote() {
   const [params] = useSearchParams();
-  const navigate = useNavigate();
   const { user } = useAuth();
   const services = useApi("/services").data || [];
   const saved = useApi(user?.role === "customer" ? "/addresses" : null).data;
@@ -110,7 +109,7 @@ export default function Quote() {
     return f;
   });
   const [checks, setChecks] = useState({ collection: null, delivery: null });
-  const [quote, setQuote] = useState(null);
+  const [submitted, setSubmitted] = useState(null);
   const [agreed, setAgreed] = useState(false);
   const [submitError, setSubmitError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
@@ -137,26 +136,6 @@ export default function Quote() {
     setForm((f) => ({ ...f, [k]: v }));
   };
 
-  const pricingInputs = useMemo(
-    () => ({
-      service_id: form.service_id, collection_postcode: form.collection_postcode, delivery_postcode: form.delivery_postcode,
-      quantity: form.quantity, weight_kg: form.weight_kg, length_cm: form.length_cm, width_cm: form.width_cm,
-      height_cm: form.height_cm, fragile: form.fragile, collection_date: form.collection_date,
-    }),
-    [form.service_id, form.collection_postcode, form.delivery_postcode, form.quantity, form.weight_kg, form.length_cm, form.width_cm, form.height_cm, form.fragile, form.collection_date]
-  );
-  const debouncedInputs = useDebounced(pricingInputs, 500);
-
-  useEffect(() => {
-    const { collection_postcode: c, delivery_postcode: d, service_id } = debouncedInputs;
-    if (!service_id || c.replace(/\s/g, "").length < 5 || d.replace(/\s/g, "").length < 5) return setQuote(null);
-    let cancelled = false;
-    api("/quotes", { method: "POST", body: debouncedInputs })
-      .then((q) => !cancelled && setQuote(q))
-      .catch((err) => !cancelled && setQuote({ ok: false, errors: [err.message], warnings: [], lines: [] }));
-    return () => { cancelled = true; };
-  }, [debouncedInputs]);
-
   const selectedService = services.find((s) => String(s.id) === String(form.service_id));
 
   const pickAddress = (prefix, a) => {
@@ -169,10 +148,10 @@ export default function Quote() {
   };
 
   const canContinue = [
-    checks.collection?.ok && checks.delivery?.ok && form.service_id && quote?.ok,
-    form.item_description.trim() && form.quantity >= 1 && quote?.ok,
+    checks.collection?.ok && checks.delivery?.ok && form.service_id,
+    form.item_description.trim() && form.quantity >= 1,
     true,
-    agreed && quote?.ok,
+    agreed,
   ][step];
 
   const go = (delta) => (e) => {
@@ -187,8 +166,8 @@ export default function Quote() {
     setSubmitError(null);
     try {
       const res = await api("/bookings", { method: "POST", body: { booking: form } });
-      const ref = res.booking.reference;
-      navigate(user?.role === "customer" ? `/account/orders/${ref}?new=1` : `/orders/${ref}?token=${res.guest_token}&new=1`);
+      setSubmitted(res.booking);
+      window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err) {
       setSubmitError(err.message);
       setSubmitting(false);
@@ -197,12 +176,14 @@ export default function Quote() {
 
   const onStepSubmit = step === STEPS.length - 1 ? submit : go(1);
 
+  if (submitted) return <Submitted booking={submitted} signedIn={user?.role === "customer"} />;
+
   return (
     <section className="container" style={{ paddingBottom: 72 }} ref={topRef}>
       <div className="page-head" style={{ paddingInline: 0 }}>
-        <div className="eyebrow">Book a delivery</div>
-        <h1>Book a delivery</h1>
-        <p className="lead">Tell us about your shipment and we'll confirm the details. {user ? "" : <>Booking as a guest — <Link to="/login" state={{ from: "/quote" }}>sign in</Link> to use saved addresses.</>}</p>
+        <div className="eyebrow">Get a quote</div>
+        <h1>Request a quote</h1>
+        <p className="lead">Tell us about your shipment and our team will call you to discuss your quotation. {user ? "" : <>Booking as a guest — <Link to="/login" state={{ from: "/quote" }}>sign in</Link> to use saved addresses.</>}</p>
       </div>
 
       <ol className="steps" aria-label="Booking progress">
@@ -225,7 +206,7 @@ export default function Quote() {
                     <div className="form-grid">
                       <PostcodeField id="collection_postcode" label="Collection postcode" value={form.collection_postcode} onChange={(v) => setForm((f) => ({ ...f, collection_postcode: v }))} onResult={(r) => setChecks((c) => ({ ...c, collection: r }))} />
                       <PostcodeField id="delivery_postcode" label="Delivery postcode" value={form.delivery_postcode} onChange={(v) => setForm((f) => ({ ...f, delivery_postcode: v }))} onResult={(r) => setChecks((c) => ({ ...c, delivery: r }))} />
-                      <Field label="Preferred collection date" htmlFor="collection_date" hint="Weekend collections carry a surcharge">
+                      <Field label="Preferred collection date" htmlFor="collection_date" hint="The date that suits you best – we'll confirm when we call">
                         <input id="collection_date" type="date" className="input" min={today()} value={form.collection_date} onChange={set("collection_date")} required />
                       </Field>
                     </div>
@@ -252,7 +233,7 @@ export default function Quote() {
               {step === 1 && (
                 <div className="card">
                   <h3>Tell us about your item</h3>
-                  <p className="small muted">Accurate details help us plan your collection. Weight and size are optional, but bookings without them need a quick review by our team.</p>
+                  <p className="small muted">The more detail you give, the more accurate our quotation will be. Weight and size are optional.</p>
                   <div className="form-grid">
                     <Field label="What are you sending?" htmlFor="item_description" className="span-all" hint="e.g. Box of books, 42-inch TV, wooden chair">
                       <input id="item_description" className="input" value={form.item_description} onChange={set("item_description")} required maxLength={200} />
@@ -266,6 +247,9 @@ export default function Quote() {
                       <input type="checkbox" checked={form.fragile} onChange={set("fragile")} />
                       <span><strong>This item is fragile</strong><br /><span className="small muted">Extra handling care. Glass, ceramics, electronics, artwork.</span></span>
                     </label>
+                    <Field label="Special requirements (optional)" htmlFor="special_requirements" className="span-all" hint="e.g. two-person lift, dismantling, packaging needed, time windows, insurance value">
+                      <textarea id="special_requirements" className="textarea" rows={3} maxLength={2000} value={form.special_requirements} onChange={set("special_requirements")} />
+                    </Field>
                   </div>
                   <p className="small muted" style={{ marginTop: 16, marginBottom: 0 }}>Please check our <Link to="/legal/prohibited-items" target="_blank">prohibited items</Link> list before booking.</p>
                 </div>
@@ -296,12 +280,11 @@ export default function Quote() {
                     <dt>Item</dt><dd>{form.quantity} × {form.item_description}{form.fragile ? " (fragile)" : ""}</dd>
                     <dt>Weight / size</dt><dd>{form.weight_kg ? `${form.weight_kg} kg` : "Not given"}{form.length_cm && form.width_cm && form.height_cm ? ` · ${form.length_cm}×${form.width_cm}×${form.height_cm} cm` : ""}</dd>
                     <dt>Collection</dt><dd>{date(form.collection_date, { weekday: "long", day: "numeric", month: "long" })}</dd>
+                    {form.special_requirements && <><dt>Special requirements</dt><dd style={{ whiteSpace: "pre-wrap" }}>{form.special_requirements}</dd></>}
                   </dl>
                   <hr className="divider" />
                   <Alert type="info" title="What happens next">
-                    {form.weight_kg && !quote?.needs_review
-                      ? "Your price will be confirmed straight away and you can pay online to secure your booking."
-                      : "Our team will review your details and confirm the final price — usually within an hour during opening times. We'll email you when it's ready to pay."}
+                    Our team will review your request and call you on {form.collection_phone || "the number you gave"} to discuss your quotation. Nothing is booked or charged until you've agreed a price with us.
                   </Alert>
                   <label className="checkbox" style={{ marginTop: 16 }}>
                     <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} required />
@@ -310,7 +293,6 @@ export default function Quote() {
                   {submitError && <div style={{ marginTop: 16 }}><Alert type="error">{submitError}</Alert></div>}
                 </div>
               )}
-              {step < 2 && quote && !quote.ok && <Alert type="error">{quote.errors.join(" ")}</Alert>}
             </motion.div>
           </AnimatePresence>
 
@@ -320,12 +302,40 @@ export default function Quote() {
               <button className="btn btn-primary btn-lg" disabled={!canContinue}>Continue <ArrowRight size={18} /></button>
             ) : (
               <button className="btn btn-primary btn-lg" disabled={!canContinue || submitting}>
-                {submitting ? "Submitting…" : quote?.needs_review || !form.weight_kg ? <>Request quote <CheckCircle2 size={18} /></> : <>Confirm & continue to payment <PackageCheck size={18} /></>}
+                {submitting ? "Sending…" : <>Submit request <Send size={18} /></>}
               </button>
             )}
           </div>
         </form>
       </div>
+    </section>
+  );
+}
+
+/** Shown after a request is submitted – deliberately no price (phase 1). */
+function Submitted({ booking, signedIn }) {
+  return (
+    <section className="container" style={{ padding: "64px 16px 96px", maxWidth: 720 }}>
+      <motion.div className="card center" initial={{ opacity: 0, y: 24, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ duration: 0.5 }} role="status" aria-live="polite">
+        <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ delay: 0.15, type: "spring", stiffness: 260, damping: 16 }}
+          style={{ width: 72, height: 72, borderRadius: "50%", background: "var(--good-soft)", color: "var(--good)", display: "grid", placeItems: "center", margin: "8px auto 20px" }}>
+          <CheckCircle2 size={38} />
+        </motion.div>
+        <h1 style={{ fontSize: "clamp(1.6rem, 4vw, 2.2rem)" }}>Thank you, we have received your request</h1>
+        <p className="lead" style={{ margin: "0 auto 24px" }}>Our team will contact you shortly to discuss your quotation.</p>
+        <dl className="dl" style={{ maxWidth: 380, margin: "0 auto 24px", textAlign: "left" }}>
+          <dt>Request reference</dt><dd className="mono">{booking.reference}</dd>
+          <dt>Route</dt><dd>{booking.collection_postcode} → {booking.delivery_postcode}</dd>
+          <dt>We'll call</dt><dd>{booking.collection_phone}</dd>
+        </dl>
+        <p className="small muted" style={{ marginBottom: 24 }}>
+          <PhoneCall size={14} style={{ display: "inline", verticalAlign: -2 }} /> Please keep your reference handy. If anything changes, <Link to="/contact">contact us</Link> quoting {booking.reference}.
+        </p>
+        <div className="row" style={{ justifyContent: "center" }}>
+          <Link to="/" className="btn btn-secondary">Back to home</Link>
+          {signedIn && <Link to="/account" className="btn btn-primary">View my requests</Link>}
+        </div>
+      </motion.div>
     </section>
   );
 }

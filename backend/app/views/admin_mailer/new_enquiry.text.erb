@@ -1,0 +1,38 @@
+<% b = @booking %>
+NEW QUOTE REQUEST – <%= b.reference %>
+Received <%= b.created_at.in_time_zone("London").strftime("%-d %b %Y, %H:%M") %>. Please call the customer to discuss pricing.
+
+CUSTOMER
+  Email:   <%= b.customer_email %>
+  Account: <%= b.user ? "#{b.user.name} (registered)" : "Guest" %>
+
+SERVICE
+  <%= b.service.name %> (<%= b.service.transit_time %>)
+
+COLLECTION
+  Contact: <%= b.collection_contact_name %>
+  Phone:   <%= b.collection_phone %>
+  Email:   <%= b.collection_email %>
+  Address: <%= b.collection_address %>
+  Date:    <%= b.collection_date&.strftime("%A %-d %B %Y") || "Not specified" %>
+  Access:  <%= row(b.collection_instructions) %>
+
+DELIVERY
+  Contact: <%= b.delivery_contact_name %>
+  Phone:   <%= b.delivery_phone %>
+  Email:   <%= b.delivery_email %>
+  Address: <%= b.delivery_address %>
+  Access:  <%= row(b.delivery_instructions) %>
+
+ITEM
+  Description: <%= b.item_description %>
+  Quantity:    <%= b.quantity %>
+  Weight:      <%= b.weight_kg ? "#{b.weight_kg.to_f} kg per item" : "Not given" %>
+  Dimensions:  <%= b.length_cm ? "#{b.length_cm.to_f} × #{b.width_cm.to_f} × #{b.height_cm.to_f} cm" : "Not given" %>
+  Fragile:     <%= b.fragile ? "Yes" : "No" %>
+
+SPECIAL REQUIREMENTS
+  <%= row(b.special_requirements) %>
+
+Open in admin: <%= @admin_url %>
+Tracking number: <%= b.tracking_number %>

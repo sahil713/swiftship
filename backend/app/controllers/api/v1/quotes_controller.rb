@@ -2,6 +2,10 @@ module Api
   module V1
     class QuotesController < ApplicationController
       def create
+        unless Setting.get(:pricing_enabled)
+          return render json: { ok: false, errors: ["Online pricing isn't available yet – submit your request and we'll call you with a quote."], warnings: [], lines: [] }, status: :forbidden
+        end
+
         service = Service.active.find_by(id: params[:service_id])
         result = PriceCalculator.new(service:, **QuotesController.calc_args(params)).call
         render json: result

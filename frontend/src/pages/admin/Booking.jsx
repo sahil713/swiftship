@@ -102,6 +102,7 @@ export default function Booking() {
               <dt>Dimensions</dt><dd>{b.length_cm ? `${Number(b.length_cm)} × ${Number(b.width_cm)} × ${Number(b.height_cm)} cm` : <span className="muted">Not given</span>}</dd>
               <dt>Collection</dt><dd>{date(b.collection_date)}</dd>
               <dt>Est. delivery</dt><dd>{date(b.estimated_delivery_date)}</dd>
+              <dt>Special requirements</dt><dd style={{ whiteSpace: "pre-wrap" }}>{b.special_requirements || <span className="muted">None</span>}</dd>
               <dt>Customer</dt><dd>{b.user ? <Link to={`/admin/customers/${b.user.id}`}>{b.user.name}</Link> : "Guest"} · {b.customer_email}</dd>
             </dl>
           </div>
@@ -214,6 +215,7 @@ export default function Booking() {
                   <li key={n.id} className="small" style={{ justifyContent: "flex-start" }}>
                     {n.channel === "email" ? <Mail size={14} /> : <MessageSquareText size={14} />}
                     <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={n.body}>{n.subject || n.body}</span>
+                    {n.status !== "sent" && <Badge tone="warning" plain>{humanize(n.status)}</Badge>}
                     <span className="muted" style={{ fontWeight: 400 }}>{dateTime(n.created_at)}</span>
                   </li>
                 ))}
@@ -264,6 +266,8 @@ const EDIT_FIELDS = [
   ["collection_line1", "Collection address", "text"], ["collection_city", "Collection city", "text"], ["collection_postcode", "Collection postcode", "text"],
   ["delivery_line1", "Delivery address", "text"], ["delivery_city", "Delivery city", "text"], ["delivery_postcode", "Delivery postcode", "text"],
   ["collection_phone", "Collection phone", "tel"], ["delivery_phone", "Delivery phone", "tel"],
+  ["collection_instructions", "Collection access information", "text"], ["delivery_instructions", "Delivery access information", "text"],
+  ["special_requirements", "Special requirements", "text"],
 ];
 
 function EditForm({ booking, onSave, busy }) {

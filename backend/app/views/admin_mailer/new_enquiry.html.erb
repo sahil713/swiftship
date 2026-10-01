@@ -1,0 +1,48 @@
+<% b = @booking %>
+<%
+  section = ->(title, rows) {
+    body = rows.map { |label, value|
+      "<tr><td style=\"padding:6px 12px 6px 0;color:#6a7390;width:150px;vertical-align:top;font-size:14px\">#{ERB::Util.h(label)}</td>" \
+      "<td style=\"padding:6px 0;color:#0e1526;font-size:14px;font-weight:600;white-space:pre-wrap\">#{ERB::Util.h(value)}</td></tr>"
+    }.join
+    "<h2 style=\"margin:24px 0 8px;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:#b73a0c\">#{ERB::Util.h(title)}</h2>" \
+    "<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" style=\"width:100%;border-collapse:collapse\">#{body}</table>"
+  }
+%>
+<div style="background:#f6f7fb;padding:24px 12px;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif">
+  <div style="max-width:640px;margin:0 auto;background:#ffffff;border:1px solid #dde1ec;border-radius:16px;overflow:hidden">
+    <div style="background:#f0501a;color:#ffffff;padding:20px 24px">
+      <div style="font-size:13px;opacity:.9">SwiftShip · New quote request</div>
+      <div style="font-size:24px;font-weight:800;margin-top:4px"><%= b.reference %></div>
+      <div style="font-size:14px;margin-top:4px"><%= b.collection_postcode %> → <%= b.delivery_postcode %> · <%= b.service.name %></div>
+    </div>
+    <div style="padding:8px 24px 24px">
+      <p style="font-size:15px;color:#3d4760;margin:16px 0 0">
+        Received <%= b.created_at.in_time_zone("London").strftime("%-d %b %Y, %H:%M") %>.
+        Please call the customer to discuss pricing. Replying to this email goes to <strong><%= b.customer_email %></strong>.
+      </p>
+      <%== section.("Customer", [["Email", b.customer_email], ["Account", b.user ? "#{b.user.name} (registered)" : "Guest"]]) %>
+      <%== section.("Collection", [
+            ["Contact", b.collection_contact_name], ["Phone", b.collection_phone], ["Email", b.collection_email],
+            ["Address", b.collection_address], ["Preferred date", b.collection_date&.strftime("%A %-d %B %Y") || "Not specified"],
+            ["Access information", row(b.collection_instructions)]
+          ]) %>
+      <%== section.("Delivery", [
+            ["Contact", b.delivery_contact_name], ["Phone", b.delivery_phone], ["Email", b.delivery_email],
+            ["Address", b.delivery_address], ["Access information", row(b.delivery_instructions)]
+          ]) %>
+      <%== section.("Item", [
+            ["Description", b.item_description], ["Quantity", b.quantity.to_s],
+            ["Weight", b.weight_kg ? "#{b.weight_kg.to_f} kg per item" : "Not given"],
+            ["Dimensions", b.length_cm ? "#{b.length_cm.to_f} × #{b.width_cm.to_f} × #{b.height_cm.to_f} cm" : "Not given"],
+            ["Fragile", b.fragile ? "Yes" : "No"]
+          ]) %>
+      <%== section.("Special requirements", [["Details", row(b.special_requirements)]]) %>
+      <div style="margin-top:28px">
+        <a href="<%= @admin_url %>" style="display:inline-block;background:#f0501a;color:#ffffff;text-decoration:none;font-weight:700;padding:12px 22px;border-radius:999px">Open request in admin</a>
+        <a href="tel:<%= b.collection_phone.gsub(/[^\d+]/, '') %>" style="display:inline-block;margin-left:8px;color:#1d49c4;font-weight:700;text-decoration:none;padding:12px 8px">Call <%= b.collection_contact_name %></a>
+      </div>
+      <p style="font-size:12px;color:#6a7390;margin-top:24px">Tracking number <%= b.tracking_number %></p>
+    </div>
+  </div>
+</div>

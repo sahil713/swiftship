@@ -4,16 +4,20 @@ import { Reveal, Spinner } from "../components/ui.jsx";
 import { useApi } from "../lib/hooks.js";
 import { money } from "../lib/format.js";
 import { serviceIcon } from "../lib/serviceIcons.js";
+import { usePricingEnabled } from "../lib/site.js";
 
 export default function Services() {
   const services = useApi("/services");
   const surcharges = useApi("/surcharges");
+  const pricing = usePricingEnabled();
   return (
     <>
       <section className="page-head container">
         <div className="eyebrow">Services</div>
-        <h1>Delivery services & pricing</h1>
-        <p className="lead">Every price starts with a service, then adds weight above the included allowance and any applicable surcharges. You'll always see the confirmed price before you pay.</p>
+        <h1>{pricing ? "Delivery services & pricing" : "Our delivery services"}</h1>
+        <p className="lead">{pricing
+          ? "Every price starts with a service, then adds weight above the included allowance and any applicable surcharges. You'll always see the confirmed price before you pay."
+          : "Choose the service that fits your shipment and send us a request. Our team will call you to discuss your quotation."}</p>
       </section>
       <section className="container" style={{ paddingBottom: 64 }}>
         {services.loading ? <Spinner /> : (
@@ -30,15 +34,15 @@ export default function Services() {
                     <h2 style={{ fontSize: "1.5rem" }}>{s.name}</h2>
                     <p className="muted">{s.description}</p>
                     <ul className="check-list">
-                      <li><CheckCircle2 size={18} /> {s.included_kg} kg included, then {money(s.price_per_kg_pence)}/kg</li>
+                      {pricing && <li><CheckCircle2 size={18} /> {s.included_kg} kg included, then {money(s.price_per_kg_pence)}/kg</li>}
                       {s.max_weight_kg && <li><CheckCircle2 size={18} /> Up to {Number(s.max_weight_kg)} kg per item</li>}
                       {s.cutoff_hour && <li><CheckCircle2 size={18} /> Book by {s.cutoff_hour}:00 {s.slug === "same-day" ? "for collection today" : "for next-day dispatch"}</li>}
                       <li><CheckCircle2 size={18} /> Live tracking & email/SMS updates</li>
                     </ul>
                     {s.restrictions && <p className="small muted"><AlertTriangle size={14} style={{ display: "inline", verticalAlign: -2 }} /> {s.restrictions}</p>}
                     <div className="price-from">
-                      <span><span className="small muted">from </span><strong>{money(s.base_price_pence)}</strong></span>
-                      <Link to={`/quote?service_id=${s.id}`} className="btn btn-primary btn-sm">Get a quote <ArrowRight size={16} /></Link>
+                      {pricing ? <span><span className="small muted">from </span><strong>{money(s.base_price_pence)}</strong></span> : <span className="small muted">Priced on request</span>}
+                      <Link to={`/quote?service_id=${s.id}`} className="btn btn-primary btn-sm">{pricing ? "Get a quote" : "Request a quote"} <ArrowRight size={16} /></Link>
                     </div>
                   </article>
                 </Reveal>
@@ -47,7 +51,7 @@ export default function Services() {
           </div>
         )}
 
-        <Reveal>
+        {pricing && <Reveal>
           <h2 style={{ marginTop: 64 }}>Additional charges</h2>
           <p className="muted">These are added automatically when they apply, and shown line by line in your quote.</p>
           <div className="table-wrap">
@@ -63,7 +67,7 @@ export default function Services() {
             </table>
           </div>
           <p className="small muted" style={{ marginTop: 12 }}>Chargeable weight is the greater of the actual weight and the volumetric weight (L × W × H in cm ÷ 5000). Quotes based on incomplete or inaccurate item details may change.</p>
-        </Reveal>
+        </Reveal>}
       </section>
     </>
   );

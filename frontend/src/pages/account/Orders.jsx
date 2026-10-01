@@ -5,11 +5,13 @@ import { useApi } from "../../lib/hooks.js";
 import { date, money } from "../../lib/format.js";
 import { Empty, Pagination, Spinner, StatusBadge, Tabs } from "../../components/ui.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
+import { usePricingEnabled } from "../../lib/site.js";
 
 export default function Orders() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [filter, setFilter] = useState("current");
+  const pricing = usePricingEnabled();
   const [page, setPage] = useState(1);
   const { data, loading } = useApi("/bookings", { filter, page });
 
@@ -29,7 +31,7 @@ export default function Orders() {
         <>
           <div className="table-wrap">
             <table className="table">
-              <thead><tr><th>Reference</th><th>Route</th><th>Service</th><th>Collection</th><th>Status</th><th className="num">Price</th></tr></thead>
+              <thead><tr><th>Reference</th><th>Route</th><th>Service</th><th>Collection</th><th>Status</th>{pricing && <th className="num">Price</th>}</tr></thead>
               <tbody>
                 {data.bookings.map((b) => (
                   <tr key={b.reference} className="clickable" onClick={() => navigate(`/account/orders/${b.reference}`)}>
@@ -38,7 +40,7 @@ export default function Orders() {
                     <td>{b.service.name}</td>
                     <td>{date(b.collection_date)}</td>
                     <td><StatusBadge status={b.status} /></td>
-                    <td className="num">{money(b.price_pence)}</td>
+                    {pricing && <td className="num">{money(b.price_pence)}</td>}
                   </tr>
                 ))}
               </tbody>

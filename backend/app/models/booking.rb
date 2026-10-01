@@ -141,7 +141,7 @@ class Booking < ApplicationRecord
         collection_contact_name collection_phone collection_email collection_line1 collection_line2
         delivery_contact_name delivery_phone delivery_email delivery_line1 delivery_line2
         weight_kg length_cm width_cm height_cm fragile collection_instructions delivery_instructions
-        price_breakdown price_confirmed_at booked_at delivered_at
+        special_requirements price_breakdown price_confirmed_at booked_at delivered_at
       ]),
       payable: payable?,
       cancellable: cancellable_by_customer?,

@@ -1,15 +1,18 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowRight, Calculator } from "lucide-react";
+import { ArrowRight, Calculator, ClipboardList } from "lucide-react";
 import { api } from "../lib/api.js";
 import { money, date } from "../lib/format.js";
 import { Alert } from "./ui.jsx";
+import { usePricingEnabled } from "../lib/site.js";
 
 export default function QuickQuote({ services }) {
   const [form, setForm] = useState({ service_id: "", collection_postcode: "", delivery_postcode: "", weight_kg: "" });
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
+  const pricing = usePricingEnabled();
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (!form.service_id && services.length) setForm((f) => ({ ...f, service_id: String(services[0].id) }));
@@ -22,6 +25,8 @@ export default function QuickQuote({ services }) {
 
   const submit = async (e) => {
     e.preventDefault();
+    // Phase 1: no online prices – hand the details to the full request form instead.
+    if (!pricing) return navigate(`/quote?${new URLSearchParams(form)}`);
     setLoading(true);
     try {
       setResult(await api("/quotes", { method: "POST", body: form }));
@@ -37,10 +42,10 @@ export default function QuickQuote({ services }) {
   return (
     <motion.div className="quote-card" initial={{ opacity: 0, y: 40, rotateX: 8 }} animate={{ opacity: 1, y: 0, rotateX: 0 }} transition={{ duration: 0.9, delay: 0.5, ease: [0.2, 0.8, 0.2, 1] }}>
       <div className="row" style={{ gap: 10, marginBottom: 14 }}>
-        <span className="brand-mark" style={{ width: 38, height: 38 }}><Calculator size={18} /></span>
+        <span className="brand-mark" style={{ width: 38, height: 38 }}>{pricing ? <Calculator size={18} /> : <ClipboardList size={18} />}</span>
         <div>
-          <h2>Instant price estimate</h2>
-          <p className="small muted" style={{ margin: 0 }}>UK-wide. No sign-up needed.</p>
+          <h2>{pricing ? "Instant price estimate" : "Request a quote"}</h2>
+          <p className="small muted" style={{ margin: 0 }}>{pricing ? "UK-wide. No sign-up needed." : "UK-wide. We'll call you to discuss your quotation."}</p>
         </div>
       </div>
       <form onSubmit={submit} className="stack" style={{ "--gap": "12px" }}>
@@ -65,7 +70,7 @@ export default function QuickQuote({ services }) {
           <input id="qq-weight" className="input" type="number" min="0.1" step="0.1" inputMode="decimal" placeholder="e.g. 5" value={form.weight_kg} onChange={set("weight_kg")} />
         </div>
         <button className="btn btn-primary btn-block btn-lg" disabled={loading}>
-          {loading ? "Calculating…" : "Get my price"} <ArrowRight size={18} />
+          {loading ? "Calculating…" : pricing ? "Get my price" : "Continue"} <ArrowRight size={18} />
         </button>
       </form>
       <AnimatePresence>

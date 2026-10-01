@@ -22,7 +22,7 @@ module Api
       end
 
       def site
-        render json: Setting.all_values.slice("support_email", "support_phone", "northern_ireland_enabled")
+        render json: Setting.all_values.slice("support_email", "support_phone", "northern_ireland_enabled", "pricing_enabled")
       end
 
       def postcode

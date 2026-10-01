@@ -10,7 +10,7 @@ module Api
           collection_city collection_postcode delivery_contact_name delivery_phone delivery_email
           delivery_line1 delivery_line2 delivery_city delivery_postcode item_description quantity
           weight_kg length_cm width_cm height_cm fragile collection_date collection_instructions
-          delivery_instructions estimated_delivery_date service_id
+          delivery_instructions special_requirements estimated_delivery_date service_id
         ].freeze
 
         def index

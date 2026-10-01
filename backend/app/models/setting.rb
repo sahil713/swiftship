@@ -2,6 +2,10 @@ class Setting < ApplicationRecord
   DEFAULTS = {
     "northern_ireland_enabled" => true,
     "auto_confirm_quotes" => true,
+    # Phase 1: no online pricing – customers submit an enquiry and staff quote by phone.
+    "pricing_enabled" => false,
+    # Where new enquiries are emailed. Blank = every active admin user.
+    "enquiry_notification_email" => "",
     "support_email" => "help@swiftship.example",
     "support_phone" => "0330 123 4567"
   }.freeze

@@ -11,7 +11,7 @@ module Api
         collection_line2 collection_city collection_postcode delivery_contact_name delivery_phone
         delivery_email delivery_line1 delivery_line2 delivery_city delivery_postcode
         item_description quantity weight_kg length_cm width_cm height_cm fragile
-        collection_date collection_instructions delivery_instructions
+        collection_date collection_instructions delivery_instructions special_requirements
       ].freeze
 
       def index
@@ -24,6 +24,8 @@ module Api
 
       def create
         attrs = params.require(:booking).permit(*BOOKING_FIELDS)
+        return create_enquiry(attrs) unless Setting.get(:pricing_enabled)
+
         service = Service.active.find_by(id: attrs[:service_id])
         quote = PriceCalculator.new(service:, **QuotesController.calc_args(attrs)).call
         unless quote.ok
@@ -94,6 +96,32 @@ module Api
       end
 
       private
+
+      # Phase 1 flow: save the request without any price and email the full details to the
+      # admin team, who call the customer to agree a price.
+      def create_enquiry(attrs)
+        collection = ServiceArea.check(attrs[:collection_postcode])
+        delivery = ServiceArea.check(attrs[:delivery_postcode])
+        errors = []
+        errors << "Collection: #{collection.message}" unless collection.ok
+        errors << "Delivery: #{delivery.message}" unless delivery.ok
+        errors << "Choose a service." unless Service.active.exists?(id: attrs[:service_id])
+        return render(json: { error: errors.to_sentence }, status: :unprocessable_entity) if errors.any?
+
+        booking = Booking.new(attrs)
+        booking.user = current_user if current_user&.role == "customer"
+        booking.customer_email = current_user&.email || attrs[:collection_email]
+        booking.collection_postcode = collection.postcode
+        booking.delivery_postcode = delivery.postcode
+
+        Booking.transaction do
+          booking.save!
+          booking.status_events.create!(status: "quote_requested", note: "Quote request received – our team will call to discuss pricing")
+        end
+        EnquiryNotifier.new_request(booking)
+
+        render json: { booking: booking.detail_json, guest_token: booking.guest_token }, status: :created
+      end
 
       def load_booking
         @booking = Booking.includes(:service, :status_events, :payments, :change_requests).find_by!(reference: params[:reference])
