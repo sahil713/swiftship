@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowLeft, ArrowRight, CheckCircle2, Info, Loader2, MapPin, PackageCheck } from "lucide-react";
+import { ArrowLeft, ArrowRight, CheckCircle2, Loader2, MapPin, PackageCheck } from "lucide-react";
 import { api } from "../lib/api.js";
 import { useApi } from "../lib/hooks.js";
-import { date, money } from "../lib/format.js";
+import { date } from "../lib/format.js";
 import { serviceIcon } from "../lib/serviceIcons.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import { Alert, Field } from "../components/ui.jsx";
@@ -60,48 +60,9 @@ function PostcodeField({ id, label, value, onChange, onResult }) {
         {loading && <Loader2 size={18} className="spin-icon" style={{ position: "absolute", right: 12, top: 14, animation: "spin 1s linear infinite", color: "var(--text-muted)" }} />}
       </div>
       <span id={`${id}-msg`} className={check ? (check.ok ? "ok-text" : "error-text") : "hint"} aria-live="polite">
-        {check ? (check.ok ? `✓ ${check.region}${check.district ? ` · ${check.district}` : ""}${check.surcharge_pence ? ` · +${money(check.surcharge_pence)} area surcharge` : ""}` : check.message) : "UK postcodes only"}
+        {check ? (check.ok ? `✓ ${check.region}${check.district ? ` · ${check.district}` : ""}` : check.message) : "UK postcodes only"}
       </span>
     </div>
-  );
-}
-
-function PriceSummary({ quote, loading, service }) {
-  return (
-    <aside className="card sticky-summary" aria-live="polite">
-      <div className="row-between" style={{ marginBottom: 12 }}>
-        <h3 style={{ margin: 0 }}>Your quote</h3>
-        {loading && <Loader2 size={18} style={{ animation: "spin 1s linear infinite", color: "var(--text-muted)" }} aria-label="Updating" />}
-      </div>
-      {!quote ? (
-        <p className="muted small">Enter postcodes and choose a service to see your price.</p>
-      ) : !quote.ok ? (
-        <Alert type="error">{quote.errors.join(" ")}</Alert>
-      ) : (
-        <>
-          <ul className="price-lines">
-            {quote.lines.map((l) => <li key={l.label}><span>{l.label}</span><span>{money(l.amount_pence)}</span></li>)}
-          </ul>
-          <div className="price-total">
-            <span>Estimated total<div className="small muted" style={{ fontWeight: 500 }}>inc. VAT</div></span>
-            <motion.span key={quote.total_pence} className="amount" initial={{ scale: 1.15, color: "var(--accent-text)" }} animate={{ scale: 1, color: "var(--text)" }}>{money(quote.total_pence)}</motion.span>
-          </div>
-          <dl className="dl small" style={{ marginTop: 16 }}>
-            {service && <><dt>Service</dt><dd>{service.name}</dd></>}
-            <dt>Chargeable weight</dt><dd>{quote.chargeable_weight_kg} kg</dd>
-            <dt>Est. delivery</dt><dd>{date(quote.estimated_delivery_date, { weekday: "short", day: "numeric", month: "short" })}</dd>
-          </dl>
-          {quote.warnings.length > 0 && (
-            <div style={{ marginTop: 14 }}>
-              <Alert type="warning">{quote.warnings.map((w) => <div key={w}>{w}</div>)}</Alert>
-            </div>
-          )}
-          <p className="small muted" style={{ marginTop: 14, marginBottom: 0 }}>
-            <Info size={14} style={{ display: "inline", verticalAlign: -2 }} /> This is an estimate. The price may change if item details are incomplete or inaccurate. You'll see the confirmed price before paying.
-          </p>
-        </>
-      )}
-    </aside>
   );
 }
 
@@ -150,7 +111,6 @@ export default function Quote() {
   });
   const [checks, setChecks] = useState({ collection: null, delivery: null });
   const [quote, setQuote] = useState(null);
-  const [quoteLoading, setQuoteLoading] = useState(false);
   const [agreed, setAgreed] = useState(false);
   const [submitError, setSubmitError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
@@ -191,11 +151,9 @@ export default function Quote() {
     const { collection_postcode: c, delivery_postcode: d, service_id } = debouncedInputs;
     if (!service_id || c.replace(/\s/g, "").length < 5 || d.replace(/\s/g, "").length < 5) return setQuote(null);
     let cancelled = false;
-    setQuoteLoading(true);
     api("/quotes", { method: "POST", body: debouncedInputs })
       .then((q) => !cancelled && setQuote(q))
-      .catch((err) => !cancelled && setQuote({ ok: false, errors: [err.message], warnings: [], lines: [] }))
-      .finally(() => !cancelled && setQuoteLoading(false));
+      .catch((err) => !cancelled && setQuote({ ok: false, errors: [err.message], warnings: [], lines: [] }));
     return () => { cancelled = true; };
   }, [debouncedInputs]);
 
@@ -242,9 +200,9 @@ export default function Quote() {
   return (
     <section className="container" style={{ paddingBottom: 72 }} ref={topRef}>
       <div className="page-head" style={{ paddingInline: 0 }}>
-        <div className="eyebrow">Quote & book</div>
-        <h1>Get a price and book a delivery</h1>
-        <p className="lead">Prices update as you type. {user ? "" : <>Booking as a guest — <Link to="/login" state={{ from: "/quote" }}>sign in</Link> to use saved addresses.</>}</p>
+        <div className="eyebrow">Book a delivery</div>
+        <h1>Book a delivery</h1>
+        <p className="lead">Tell us about your shipment and we'll confirm the details. {user ? "" : <>Booking as a guest — <Link to="/login" state={{ from: "/quote" }}>sign in</Link> to use saved addresses.</>}</p>
       </div>
 
       <ol className="steps" aria-label="Booking progress">
@@ -256,7 +214,7 @@ export default function Quote() {
         ))}
       </ol>
 
-      <div className="booking-layout">
+      <div style={{ maxWidth: 820 }}>
         <form onSubmit={onStepSubmit} noValidate={false}>
           <AnimatePresence mode="wait">
             <motion.div key={step} initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -24 }} transition={{ duration: 0.25 }} className="stack">
@@ -280,7 +238,7 @@ export default function Quote() {
                         return (
                           <label key={s.id} className="option">
                             <input type="radio" name="service" value={s.id} checked={String(form.service_id) === String(s.id)} onChange={set("service_id")} />
-                            <div className="opt-title"><span><Icon size={18} style={{ display: "inline", verticalAlign: -3, color: "var(--accent)" }} /> {s.name}</span><span>{money(s.base_price_pence)}+</span></div>
+                            <div className="opt-title"><span><Icon size={18} style={{ display: "inline", verticalAlign: -3, color: "var(--accent)" }} /> {s.name}</span></div>
                             <div className="small muted">{s.transit_time}</div>
                             <div className="small" style={{ marginTop: 6, color: "var(--text-2)" }}>{s.tagline}</div>
                           </label>
@@ -294,7 +252,7 @@ export default function Quote() {
               {step === 1 && (
                 <div className="card">
                   <h3>Tell us about your item</h3>
-                  <p className="small muted">The more accurate these are, the more accurate your price. Weight and size are optional, but quotes without them need manual confirmation.</p>
+                  <p className="small muted">Accurate details help us plan your collection. Weight and size are optional, but bookings without them need a quick review by our team.</p>
                   <div className="form-grid">
                     <Field label="What are you sending?" htmlFor="item_description" className="span-all" hint="e.g. Box of books, 42-inch TV, wooden chair">
                       <input id="item_description" className="input" value={form.item_description} onChange={set("item_description")} required maxLength={200} />
@@ -352,6 +310,7 @@ export default function Quote() {
                   {submitError && <div style={{ marginTop: 16 }}><Alert type="error">{submitError}</Alert></div>}
                 </div>
               )}
+              {step < 2 && quote && !quote.ok && <Alert type="error">{quote.errors.join(" ")}</Alert>}
             </motion.div>
           </AnimatePresence>
 
@@ -366,7 +325,6 @@ export default function Quote() {
             )}
           </div>
         </form>
-        <PriceSummary quote={quote} loading={quoteLoading} service={selectedService} />
       </div>
     </section>
   );
