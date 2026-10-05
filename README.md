@@ -53,9 +53,9 @@ git remote add origin https://github.com/<you>/swiftship.git && git push -u orig
 - `swiftship-db` (PostgreSQL)
 - `swiftship-api` (the Rails API, run from `backend/Dockerfile`), with every secret generated for you.
 
-After the first deploy, note the service URL (e.g. `https://swiftship-api-kpaq.onrender.com`). The seeded accounts use the password in **swiftship-api → Environment → SEED_PASSWORD**.
+After the first deploy, note the service URL (e.g. `https://shift-logistics-api.onrender.com`). The seeded accounts use the password in **swiftship-api → Environment → SEED_PASSWORD**.
 
-**3. Frontend on Vercel.** If your Render URL isn’t `https://swiftship-api-kpaq.onrender.com`, put your URL in the `/api` rewrite in `frontend/vercel.json`, then commit and push. In Vercel, choose **Add New → Project**, import the repository and set **Root Directory** to `frontend`. Vite is detected automatically. The frontend calls `/api/...` on its own domain, and Vercel forwards those calls to Render, so no CORS setup is needed.
+**3. Frontend on Vercel.** If your Render URL isn’t `https://shift-logistics-api.onrender.com`, put your URL in the `/api` rewrite in `frontend/vercel.json`, then commit and push. In Vercel, choose **Add New → Project**, import the repository and set **Root Directory** to `frontend`. Vite is detected automatically. The frontend calls `/api/...` on its own domain, and Vercel forwards those calls to Render, so no CORS setup is needed.
 
 **4. Point Render at the frontend.** In Render, set `FRONTEND_ORIGIN` to your Vercel URL so email tracking links point there.
 
