@@ -1,25 +1,27 @@
 # One leg of a job for a driver: collecting the items, or delivering them.
 #
-# Collection: assigned → collected (POC submitted) → closed (items in the warehouse)
-# Delivery:   assigned → started (optional) → completed (POD submitted)
+# Collection: assigned → started (optional, "In Progress") → collected (POC submitted) → closed ("At Warehouse")
+# Delivery:   assigned → started (optional, "Out for Delivery") → completed (POD submitted)
+# Either task can be unassigned (no driver) by an admin until the driver has the items.
 class DriverTask < ApplicationRecord
   KINDS = %w[collection delivery].freeze
-  STATUSES = %w[assigned started collected closed completed cancelled].freeze
-  OPEN_STATUSES = %w[assigned started collected].freeze
+  STATUSES = %w[unassigned assigned started collected closed completed cancelled].freeze
+  OPEN_STATUSES = %w[unassigned assigned started collected].freeze
   STATUS_LABELS = {
-    "assigned" => "Assigned", "started" => "On the way", "collected" => "Collected",
-    "closed" => "In warehouse – closed", "completed" => "Completed", "cancelled" => "Cancelled"
+    "unassigned" => "Unassigned", "assigned" => "Assigned", "collected" => "Collected",
+    "closed" => "At Warehouse", "completed" => "Completed", "cancelled" => "Cancelled"
   }.freeze
 
   class InvalidStep < StandardError; end
 
   belongs_to :booking
-  belongs_to :driver, class_name: "User"
+  belongs_to :driver, class_name: "User", optional: true
   has_one :proof, class_name: "TaskProof", dependent: :destroy
 
   validates :kind, inclusion: { in: KINDS }
   validates :status, inclusion: { in: STATUSES }
-  validate :driver_is_a_driver
+  validates :driver, presence: true, unless: -> { %w[unassigned cancelled].include?(status) }
+  validate :driver_is_a_driver, if: -> { driver_id_changed? && driver }
 
   scope :open, -> { where(status: OPEN_STATUSES) }
   scope :finished, -> { where(status: %w[closed completed]) }
@@ -28,9 +30,28 @@ class DriverTask < ApplicationRecord
   def delivery? = kind == "delivery"
   def open? = OPEN_STATUSES.include?(status)
 
+  def status_label
+    return (collection? ? "In Progress" : "Out for Delivery") if status == "started"
+    STATUS_LABELS[status]
+  end
+
+  # Admin gives the task to a driver (or moves it to another driver).
+  def assign_to!(new_driver)
+    step!("This task is already finished") { open? }
+    update!(driver: new_driver, status: status == "unassigned" ? "assigned" : status)
+    booking.sync_driver!
+  end
+
+  # Admin takes the task away from its driver. Not possible once the driver holds the items.
+  def unassign!
+    step!("The driver already has the items – reassign the task to another driver instead") { %w[assigned started].include?(status) }
+    update!(driver: nil, status: "unassigned", started_at: nil)
+    booking.sync_driver!
+  end
+
   # Driver submits the Proof of Collection; the items are now with the driver.
   def record_collection!(user:, **proof_attrs)
-    step!("Proof of collection can only be submitted for an assigned collection task") { collection? && status == "assigned" }
+    step!("Proof of collection can only be submitted for an assigned collection task") { collection? && %w[assigned started].include?(status) }
     transaction do
       create_proof!(proof_attrs.merge(kind: "collection", user:))
       update!(status: "collected", collected_at: proof.occurred_at)
@@ -50,12 +71,12 @@ class DriverTask < ApplicationRecord
     end
   end
 
-  # Optional: driver sets off with the delivery (customer gets an "out for delivery" update).
-  def start_delivery!(user:)
-    step!("This delivery has already been started or finished") { delivery? && status == "assigned" }
+  # Optional: driver sets off. For a delivery the customer gets an "out for delivery" update.
+  def start!(user:)
+    step!("This task has already been started or finished") { status == "assigned" }
     transaction do
       update!(status: "started", started_at: Time.current)
-      booking.transition_to!("out_for_delivery", user:) unless booking.status == "out_for_delivery"
+      booking.transition_to!("out_for_delivery", user:) if delivery? && booking.status != "out_for_delivery"
     end
   end
 
@@ -80,7 +101,7 @@ class DriverTask < ApplicationRecord
 
   def as_json(*)
     slice(:id, :kind, :status, :warehouse_note, :started_at, :collected_at, :closed_at, :completed_at, :created_at)
-      .merge(status_label: STATUS_LABELS[status], driver: driver.slice(:id, :name), proof: proof&.as_json)
+      .merge(status_label:, driver: driver&.slice(:id, :name), proof: proof&.as_json)
   end
 
   private

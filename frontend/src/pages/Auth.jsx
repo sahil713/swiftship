@@ -42,7 +42,7 @@ export function Login() {
     <AuthCard title="Sign in" subtitle="Customers, staff and drivers all sign in here.">
       <form className="stack" onSubmit={submit}>
         {error && <Alert type="error">{error}</Alert>}
-        <Field label="Email" htmlFor="l-email"><input id="l-email" type="email" className="input" autoComplete="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required /></Field>
+        <Field label="Email or username" htmlFor="l-email"><input id="l-email" type="text" className="input" autoComplete="username" autoCapitalize="none" spellCheck={false} value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required /></Field>
         <Field label="Password" htmlFor="l-pass"><input id="l-pass" type="password" className="input" autoComplete="current-password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required /></Field>
         <button className="btn btn-primary btn-block" disabled={busy}><LogIn size={16} /> {busy ? "Signing in…" : "Sign in"}</button>
         <p className="small muted center">New here? <Link to="/register">Create an account</Link> or <Link to="/quote">book as a guest</Link>.</p>

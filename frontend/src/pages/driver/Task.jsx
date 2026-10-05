@@ -12,10 +12,13 @@ import { useToast } from "../../components/Toast.jsx";
 import { TaskKind } from "./Tasks.jsx";
 
 const STEPS = {
-  collection: [["assigned", "Assigned"], ["collected", "Collected"], ["closed", "In warehouse"]],
-  delivery: [["assigned", "Assigned"], ["started", "On the way"], ["completed", "Completed"]],
+  collection: [["assigned", "Assigned"], ["started", "In progress"], ["collected", "Collected"], ["closed", "At warehouse"]],
+  delivery: [["assigned", "Assigned"], ["started", "Out for delivery"], ["completed", "Completed"]],
 };
-const ORDER = { assigned: 0, started: 1, collected: 1, closed: 2, completed: 2 };
+const ORDER = {
+  collection: { assigned: 0, started: 1, collected: 2, closed: 3 },
+  delivery: { assigned: 0, started: 1, completed: 2 },
+};
 
 // Local date-time string for <input type="datetime-local">.
 const nowLocal = () => {
@@ -176,18 +179,23 @@ export default function Task() {
         </div>
         <h1 style={{ margin: "10px 0 8px", fontSize: "1.5rem" }}>{task.contact_name}</h1>
         <ol className="task-steps" aria-label="Task progress">
-          {steps.map(([key, label]) => <li key={key} className={ORDER[task.status] >= ORDER[key] ? "done" : ""}>{label}</li>)}
+          {steps.map(([key, label]) => <li key={key} className={(ORDER[task.kind][task.status] ?? -1) >= ORDER[task.kind][key] ? "done" : ""}>{label}</li>)}
         </ol>
       </div>
 
       {/* Status banners */}
       {task.status === "collected" && <Alert type="success" title="Items collected">Take the items to the warehouse, then confirm below to close this task.</Alert>}
-      {task.status === "closed" && <Alert type="success" title="Task closed – items in warehouse">The delivery has been set up as a separate task.</Alert>}
+      {task.status === "closed" && <Alert type="success" title="At warehouse – task closed">The delivery has been set up as a separate task.</Alert>}
       {task.status === "completed" && <Alert type="success" title="Delivery completed">Thanks – the proof of delivery has been saved to the job.</Alert>}
       {task.status === "cancelled" && <Alert type="warning" title="Task cancelled">This task was cancelled by the office.</Alert>}
 
       {/* Next action */}
-      {isCollection && task.status === "assigned" && <ProofForm task={task} onSaved={proofSaved} />}
+      {isCollection && task.status === "assigned" && (
+        <button className="btn btn-secondary btn-lg btn-block" disabled={busy} onClick={() => run("start", undefined, "Collection started")}>
+          <Truck size={18} /> Start collection (I'm on my way)
+        </button>
+      )}
+      {isCollection && ["assigned", "started"].includes(task.status) && <ProofForm task={task} onSaved={proofSaved} />}
 
       {isCollection && task.status === "collected" && (
         <div className="card stack">
@@ -227,7 +235,7 @@ export default function Task() {
       )}
 
       {/* Saved proof for finished steps */}
-      {isCollection && task.proof && task.status !== "assigned" && (
+      {isCollection && task.proof && !["assigned", "started"].includes(task.status) && (
         <div className="card"><h3>Proof of Collection</h3><ProofView proof={task.proof} kind="collection" />{task.warehouse_note && <p className="small muted" style={{ marginTop: 10 }}>Warehouse note: {task.warehouse_note}</p>}</div>
       )}
       {!isCollection && task.status === "completed" && task.proof && <div className="card"><h3>Proof of Delivery</h3><ProofView proof={task.proof} kind="delivery" /></div>}

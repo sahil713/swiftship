@@ -9,7 +9,7 @@ const PAGES = {
     body: (
       <>
         <h2>1. Our service</h2>
-        <p>Mahajan Logistics (powered by V&amp;V Logistics and Rentals Ltd) collects and delivers goods between addresses in England, Scotland, Wales and Northern Ireland. We do not serve the Republic of Ireland, the Channel Islands or the Isle of Man.</p>
+        <p>Shift Logistics (powered by V&amp;V Logistics and Rentals Ltd) collects and delivers goods between addresses in England, Scotland, Wales and Northern Ireland. We do not serve the Republic of Ireland, the Channel Islands or the Isle of Man.</p>
         <h2>2. Quotes and prices</h2>
         <ul>
           <li>Online estimates are based on the information you give us. If the weight, size, addresses or item description are incomplete or inaccurate, the price may change.</li>
@@ -39,7 +39,7 @@ const PAGES = {
     title: "Privacy notice",
     body: (
       <>
-        <p>This notice explains how Mahajan Logistics, powered by V&amp;V Logistics and Rentals Ltd ("we"), uses personal data, in line with UK GDPR and the Data Protection Act 2018.</p>
+        <p>This notice explains how Shift Logistics, powered by V&amp;V Logistics and Rentals Ltd ("we"), uses personal data, in line with UK GDPR and the Data Protection Act 2018.</p>
         <h2>What we collect</h2>
         <ul>
           <li>Names, addresses, phone numbers and email addresses for senders and recipients.</li>

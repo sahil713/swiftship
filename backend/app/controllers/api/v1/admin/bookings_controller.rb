@@ -66,10 +66,9 @@ module Api
           task = kind == "collection" ? @booking.collection_task : @booking.delivery_task
 
           if task
-            return render(json: { error: "This #{kind} task is already finished" }, status: :unprocessable_entity) unless task.open?
             return render_booking if task.driver_id == driver.id
-            task.update!(driver:)
-            message = "#{kind.capitalize} task reassigned to #{driver.name}"
+            task.assign_to!(driver)
+            message = "#{kind.capitalize} task assigned to #{driver.name}"
           else
             allowed = kind == "collection" ? %w[booked] : %w[in_warehouse in_transit failed_delivery]
             unless allowed.include?(@booking.status)
@@ -77,19 +76,23 @@ module Api
               return render json: { error: hint }, status: :unprocessable_entity
             end
             @booking.driver_tasks.create!(kind:, driver:)
+            @booking.sync_driver!
             message = "#{kind.capitalize} task assigned to #{driver.name}"
           end
-          @booking.sync_driver!
           @booking.notes.create!(user: current_user, kind: "internal", body: message)
           render_booking
+        rescue DriverTask::InvalidStep => e
+          render json: { error: e.message }, status: :unprocessable_entity
         end
 
-        def cancel_task
+        def unassign_task
           task = @booking.driver_tasks.find(params[:task_id])
-          return render(json: { error: "Only open tasks can be cancelled" }, status: :unprocessable_entity) unless task.open? && task.status == "assigned"
-          task.update!(status: "cancelled")
-          @booking.notes.create!(user: current_user, kind: "internal", body: "#{task.kind.capitalize} task for #{task.driver.name} cancelled")
+          previous = task.driver&.name
+          task.unassign!
+          @booking.notes.create!(user: current_user, kind: "internal", body: "#{task.kind.capitalize} task removed from #{previous}")
           render_booking
+        rescue DriverTask::InvalidStep => e
+          render json: { error: e.message }, status: :unprocessable_entity
         end
 
         def add_note

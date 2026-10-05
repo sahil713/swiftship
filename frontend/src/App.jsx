@@ -25,6 +25,8 @@ import AdminEnquiries from "./pages/admin/Enquiries.jsx";
 import AdminChangeRequests from "./pages/admin/ChangeRequests.jsx";
 import AdminStaff from "./pages/admin/Staff.jsx";
 import AdminSettings from "./pages/admin/Settings.jsx";
+import AdminDrivers, { DriverDetail as AdminDriver } from "./pages/admin/Drivers.jsx";
+import AdminTasks from "./pages/admin/Tasks.jsx";
 import DriverTasks from "./pages/driver/Tasks.jsx";
 import DriverTask from "./pages/driver/Task.jsx";
 
@@ -40,10 +42,11 @@ const ADMIN_LINKS = [
   { to: "/admin/change-requests", label: "Change requests", icon: RefreshCcw },
   { to: "/admin/enquiries", label: "Enquiries", icon: MessageSquare },
   { to: "/admin/customers", label: "Customers", icon: Users },
-  { to: "/driver", label: "Driver tasks", icon: Truck },
+  { to: "/admin/tasks", label: "Driver tasks", icon: Truck },
+  { to: "/admin/drivers", label: "Drivers", icon: IdCard },
   { section: "Configuration", roles: ["admin", "operations"] },
   { to: "/admin/pricing", label: "Services & pricing", icon: Tags },
-  { to: "/admin/staff", label: "Staff & drivers", icon: IdCard },
+  { to: "/admin/staff", label: "Office staff", icon: UserCog },
   { to: "/admin/settings", label: "Settings", icon: Settings },
 ];
 
@@ -89,6 +92,9 @@ export default function App() {
         <Route path="admin/change-requests" element={<AdminChangeRequests />} />
         <Route path="admin/staff" element={<AdminStaff />} />
         <Route path="admin/settings" element={<AdminSettings />} />
+        <Route path="admin/drivers" element={<AdminDrivers />} />
+        <Route path="admin/drivers/:id" element={<AdminDriver />} />
+        <Route path="admin/tasks" element={<AdminTasks />} />
       </Route>
 
       <Route element={<RequireRole roles={["driver", "operations", "admin"]}><AppLayout title="Operations" links={DRIVER_LINKS} /></RequireRole>}>

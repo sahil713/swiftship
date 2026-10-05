@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_10_06_000002) do
+ActiveRecord::Schema[8.0].define(version: 2026_10_06_000004) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -123,7 +123,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_06_000002) do
 
   create_table "driver_tasks", force: :cascade do |t|
     t.bigint "booking_id", null: false
-    t.bigint "driver_id", null: false
+    t.bigint "driver_id"
     t.string "kind", null: false
     t.string "status", default: "assigned", null: false
     t.text "warehouse_note"
@@ -270,14 +270,16 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_06_000002) do
 
   create_table "users", force: :cascade do |t|
     t.string "name", null: false
-    t.string "email", null: false
+    t.string "email"
     t.string "phone"
     t.string "password_digest", null: false
     t.string "role", default: "customer", null: false
     t.boolean "active", default: true, null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "username"
     t.index "lower((email)::text)", name: "index_users_on_lower_email", unique: true
+    t.index "lower((username)::text)", name: "index_users_on_lower_username", unique: true, where: "(username IS NOT NULL)"
     t.index ["role"], name: "index_users_on_role"
   end
 

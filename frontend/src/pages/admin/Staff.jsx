@@ -10,7 +10,6 @@ import { useAuth } from "../../context/AuthContext.jsx";
 const ROLE_INFO = {
   admin: "Full access, including pricing, refunds, staff and settings",
   operations: "Bookings, statuses, customers and enquiries",
-  driver: "Assigned jobs only, via the operations view",
 };
 
 export default function Staff() {
@@ -38,8 +37,8 @@ export default function Staff() {
   return (
     <div className="stack">
       <div className="row-between">
-        <h1 style={{ margin: 0 }}>Staff & drivers</h1>
-        {isAdmin && <button className="btn btn-primary" onClick={() => { setError(null); setEditing({ name: "", email: "", phone: "", role: "driver", password: "", active: true }); }}><Plus size={16} /> Add person</button>}
+        <h1 style={{ margin: 0 }}>Office staff</h1>
+        {isAdmin && <button className="btn btn-primary" onClick={() => { setError(null); setEditing({ name: "", email: "", phone: "", role: "operations", password: "", active: true }); }}><Plus size={16} /> Add person</button>}
       </div>
       <div className="grid-3">
         {Object.entries(ROLE_INFO).map(([r, d]) => <div key={r} className="card card-tight"><strong>{humanize(r)}</strong><div className="small muted">{d}</div></div>)}

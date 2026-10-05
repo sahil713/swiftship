@@ -17,11 +17,11 @@ module Api
       end
 
       def login
-        user = User.find_by("lower(email) = ?", params[:email].to_s.strip.downcase)
+        user = User.find_for_login(params[:email])
         if user&.active && user.authenticate(params[:password].to_s)
           render json: { token: JsonWebToken.encode(user), user: }
         else
-          render json: { error: "Incorrect email or password" }, status: :unauthorized
+          render json: { error: "Incorrect email/username or password" }, status: :unauthorized
         end
       end
 

@@ -1,4 +1,4 @@
-# Mahajan Logistics — Powered by V&V Logistics and Rentals Ltd
+# Shift Logistics — Powered by V&V Logistics and Rentals Ltd
 
 UK shipping & logistics website.
 

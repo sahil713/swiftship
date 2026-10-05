@@ -91,7 +91,7 @@ class Booking < ApplicationRecord
   # Keeps bookings.driver pointing at whoever currently holds the job (for lists and filters).
   def sync_driver!
     current = driver_tasks.open.last || driver_tasks.where.not(status: "cancelled").last
-    update!(driver: current&.driver) if current && driver_id != current.driver_id
+    update_column(:driver_id, current.driver_id) if current && driver_id != current.driver_id
   end
 
   # Flags the request for admin review when either end is outside the normal service area.

@@ -35,7 +35,7 @@ Rails.application.routes.draw do
             post :confirm_price
             get :reprice
             post :assign_task
-            post "tasks/:task_id/cancel", action: :cancel_task
+            post "tasks/:task_id/unassign", action: :unassign_task
             post :add_note
             post :refund
             post "change_requests/:change_request_id", action: :resolve_change_request
@@ -47,6 +47,13 @@ Rails.application.routes.draw do
         resources :delivery_areas, only: %i[index create update destroy]
         resources :surcharges, only: %i[index create update destroy]
         resources :postcode_rules, only: %i[index create update destroy]
+        resources :drivers, only: %i[index show create update destroy]
+        resources :tasks, only: :index do
+          member do
+            post :assign
+            post :unassign
+          end
+        end
         resources :enquiries, only: %i[index update]
         resources :change_requests, only: :index
         get "settings", to: "settings#show"

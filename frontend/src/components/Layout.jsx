@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { Menu, X, Truck, LogOut, User } from "lucide-react";
+import { Menu, X, LogOut, User } from "lucide-react";
 import ThemeToggle from "./ThemeToggle.jsx";
 import { homeFor, useAuth } from "../context/AuthContext.jsx";
 import { BRAND } from "../lib/brand.js";
@@ -16,11 +16,11 @@ const NAV = [
 export function Brand({ to = "/" }) {
   return (
     <Link to={to} className="brand" aria-label={`${BRAND.full} – home`}>
-      <span className="brand-mark"><Truck size={19} strokeWidth={2.4} /></span>
-      <span className="brand-text">
-        <span className="brand-name">{BRAND.name}</span>
-        <span className="brand-powered">{BRAND.poweredBy}</span>
+      <span className="brand-logo">
+        <img className="logo-light" src="/logo.png" alt={BRAND.name} width="573" height="132" />
+        <img className="logo-dark" src="/logo-dark.png" alt="" aria-hidden="true" width="573" height="132" />
       </span>
+      <span className="brand-powered">{BRAND.poweredBy}</span>
     </Link>
   );
 }

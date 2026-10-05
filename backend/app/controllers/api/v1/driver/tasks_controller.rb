@@ -30,7 +30,7 @@ module Api
         end
 
         def start
-          @task.start_delivery!(user: current_user)
+          @task.start!(user: current_user)
           render_task
         end
 

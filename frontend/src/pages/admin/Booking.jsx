@@ -287,7 +287,7 @@ function EditForm({ booking, onSave, busy }) {
   );
 }
 
-const TASK_TONE = { assigned: "warning", started: "accent", collected: "info", closed: "good", completed: "good", cancelled: "muted" };
+const TASK_TONE = { unassigned: "critical", assigned: "warning", started: "accent", collected: "info", closed: "good", completed: "good", cancelled: "muted" };
 
 /** Collection and delivery tasks for the job, with assignment and the drivers' POC / POD records. */
 function DriverTasks({ booking: b, drivers, act, busy }) {
@@ -312,12 +312,13 @@ function DriverTasks({ booking: b, drivers, act, busy }) {
           <div className="stack">
             <div className="row" style={{ gap: 8 }}>
               <label className="small muted" htmlFor={`drv-${kind}`}>Driver</label>
-              <select id={`drv-${kind}`} className="select" style={{ maxWidth: 240, minHeight: 38 }} value={t.driver.id} disabled={busy || !["assigned", "started", "collected"].includes(t.status)}
-                onChange={(e) => act("/assign_task", { kind, driver_id: e.target.value }, "Task reassigned")}>
-                {!drivers.some((d) => d.id === t.driver.id) && <option value={t.driver.id}>{t.driver.name}</option>}
+              <select id={`drv-${kind}`} className="select" style={{ maxWidth: 240, minHeight: 38 }} value={t.driver?.id || ""} disabled={busy || !["unassigned", "assigned", "started", "collected"].includes(t.status)}
+                onChange={(e) => e.target.value && act("/assign_task", { kind, driver_id: e.target.value }, t.driver ? "Task reassigned" : "Task assigned")}>
+                {!t.driver && <option value="">Choose driver…</option>}
+                {t.driver && !drivers.some((d) => d.id === t.driver.id) && <option value={t.driver.id}>{t.driver.name}</option>}
                 {drivers.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
               </select>
-              {t.status === "assigned" && <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => window.confirm(`Cancel this ${kind} task?`) && act(`/tasks/${t.id}/cancel`, {}, "Task cancelled")}>Cancel task</button>}
+              {["assigned", "started"].includes(t.status) && <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => window.confirm(`Remove ${t.driver?.name} from this ${kind} task?`) && act(`/tasks/${t.id}/unassign`, {}, "Task unassigned")}>Unassign</button>}
             </div>
             <div className="small muted">
               Assigned {dateTime(t.created_at)}
