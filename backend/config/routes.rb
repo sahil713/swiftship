@@ -34,7 +34,8 @@ Rails.application.routes.draw do
             post :status
             post :confirm_price
             get :reprice
-            post :assign_driver
+            post :assign_task
+            post "tasks/:task_id/cancel", action: :cancel_task
             post :add_note
             post :refund
             post "change_requests/:change_request_id", action: :resolve_change_request
@@ -53,10 +54,13 @@ Rails.application.routes.draw do
       end
 
       namespace :driver do
-        resources :jobs, only: %i[index show], param: :reference do
+        resources :tasks, only: %i[index show] do
           member do
-            post :status
-            post :proof_of_delivery
+            post :collect
+            post :close
+            post :start
+            post :proof
+            post :complete
             post :report_issue
           end
         end

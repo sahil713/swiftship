@@ -38,27 +38,15 @@ class BookingFlowTest < ActionDispatch::IntegrationTest
 
     admin = auth_headers("admin@swiftship.example")
     driver = User.find_by!(email: "driver@swiftship.example")
-    post "/api/v1/admin/bookings/#{ref}/assign_driver", params: { driver_id: driver.id }, headers: admin, as: :json
-    assert_response :success
-
-    driver_headers = auth_headers(driver.email)
-    %w[collected in_transit out_for_delivery].each do |status|
-      post "/api/v1/driver/jobs/#{ref}/status", params: { status: }, headers: driver_headers, as: :json
-      assert_response :success, response.body
-    end
-    post "/api/v1/driver/jobs/#{ref}/status", params: { status: "delivered" }, headers: driver_headers, as: :json
-    assert_response :unprocessable_entity, "delivery needs proof first"
-
-    post "/api/v1/driver/jobs/#{ref}/proof_of_delivery",
-         params: { recipient_name: "R. Receiver", signature_data: "data:image/png;base64,iVBORw0KGgo=" }, headers: driver_headers, as: :json
+    post "/api/v1/admin/bookings/#{ref}/assign_task", params: { kind: "collection", driver_id: driver.id }, headers: admin, as: :json
     assert_response :success, response.body
-    assert_equal "delivered", json["status"]
-
+    collection = json.dig("booking", "tasks").find { _1["kind"] == "collection" }
+    deliver_through_driver_portal(collection["id"], driver)
     booking = Booking.find_by!(reference: ref)
     get "/api/v1/track/#{booking.tracking_number.downcase}"
     assert_response :success
     assert_equal "delivered", json["status"]
-    assert_equal %w[quote_requested awaiting_payment booked collected in_transit out_for_delivery delivered], json["events"].map { _1["status"] }
+    assert_equal %w[quote_requested awaiting_payment booked collected in_warehouse out_for_delivery delivered], json["events"].map { _1["status"] }
     refute_includes response.body, "Guest Sender", "tracking must not leak names"
     assert booking.notifications.where(channel: "email").exists?
     assert booking.notifications.where(channel: "email").all? { _1.subject.start_with?("Mahajan Logistics:") }
@@ -200,5 +188,93 @@ class BookingFlowTest < ActionDispatch::IntegrationTest
       assert_response :unprocessable_entity
       assert_match(/Ireland/, json["error"])
     end
+  end
+
+  PHOTO = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ==".freeze
+  SIGNATURE = "data:image/png;base64,iVBORw0KGgo=".freeze
+
+  # Drives a job through the driver portal: POC → warehouse → (new delivery task) → POD → completed.
+  def deliver_through_driver_portal(collection_task_id, driver)
+    headers = auth_headers(driver.email)
+
+    get "/api/v1/driver/tasks", headers: headers
+    assert_includes json.map { _1["id"] }, collection_task_id
+
+    post "/api/v1/driver/tasks/#{collection_task_id}/close", headers: headers, as: :json
+    assert_response :unprocessable_entity, "can't close before proof of collection"
+
+    post "/api/v1/driver/tasks/#{collection_task_id}/collect",
+         params: { person_name: "Guest Sender", notes: "2 boxes, well packed", photos: [PHOTO, PHOTO] }, headers: headers, as: :json
+    assert_response :success, response.body
+    assert_equal "collected", json["status"]
+    assert_equal "collected", json["booking_status"]
+    assert_equal 2, json.dig("proof", "photos").size
+
+    post "/api/v1/driver/tasks/#{collection_task_id}/close", params: { note: "Bay 4" }, headers: headers, as: :json
+    assert_response :success, response.body
+    assert_equal "closed", json["status"]
+    assert_equal "in_warehouse", json["booking_status"]
+
+    get "/api/v1/driver/tasks", headers: headers
+    job_ref = DriverTask.find(collection_task_id).booking.reference
+    delivery = json.find { _1["kind"] == "delivery" && _1["reference"] == job_ref }
+    assert delivery, "a delivery task should be created for the driver"
+    refute_includes json.map { _1["id"] }, collection_task_id, "closed task leaves the active list"
+
+    post "/api/v1/driver/tasks/#{delivery['id']}/complete", headers: headers, as: :json
+    assert_response :unprocessable_entity, "can't complete without POD"
+
+    post "/api/v1/driver/tasks/#{delivery['id']}/proof", params: { person_name: "R. Receiver", photos: [PHOTO] }, headers: headers, as: :json
+    assert_response :success
+    post "/api/v1/driver/tasks/#{delivery['id']}/complete", headers: headers, as: :json
+    assert_response :unprocessable_entity, "signature is required"
+
+    post "/api/v1/driver/tasks/#{delivery['id']}/proof",
+         params: { person_name: "R. Receiver", occurred_at: Time.current.iso8601, notes: "Handed over", photos: [PHOTO], signature_data: SIGNATURE },
+         headers: headers, as: :json
+    assert_response :success, response.body
+    post "/api/v1/driver/tasks/#{delivery['id']}/complete", headers: headers, as: :json
+    assert_response :success, response.body
+    assert_equal "completed", json["status"]
+    assert_equal "delivered", json["booking_status"]
+  end
+
+  test "drivers only see their own tasks" do
+    booking = Booking.find_by!(status: "quote_requested")
+    admin = auth_headers("admin@swiftship.example")
+    post "/api/v1/admin/bookings/#{booking.reference}/assign_task", params: { kind: "collection", driver_id: User.find_by!(email: "driver@swiftship.example").id }, headers: admin, as: :json
+    assert_response :unprocessable_entity, "collection needs a confirmed booking"
+    assert_match(/Booked/, json["error"])
+
+    post "/api/v1/admin/bookings/#{booking.reference}/status", params: { status: "booked", note: "Price agreed by phone" }, headers: admin, as: :json
+    assert_response :success, response.body
+    dan = User.find_by!(email: "driver@swiftship.example")
+    post "/api/v1/admin/bookings/#{booking.reference}/assign_task", params: { kind: "collection", driver_id: dan.id }, headers: admin, as: :json
+    assert_response :success
+    task_id = json.dig("booking", "tasks").first["id"]
+
+    get "/api/v1/driver/tasks/#{task_id}", headers: auth_headers("driver2@swiftship.example")
+    assert_response :not_found
+    get "/api/v1/driver/tasks/#{task_id}", headers: auth_headers(dan.email)
+    assert_response :success
+    assert_equal booking.collection_line1, json.dig("address", "line1")
+  end
+
+  test "admin sees POC and POD records on the job" do
+    booking = Booking.find_by!(status: "quote_requested")
+    admin = auth_headers("admin@swiftship.example")
+    dan = User.find_by!(email: "driver@swiftship.example")
+    post "/api/v1/admin/bookings/#{booking.reference}/status", params: { status: "booked" }, headers: admin, as: :json
+    post "/api/v1/admin/bookings/#{booking.reference}/assign_task", params: { kind: "collection", driver_id: dan.id }, headers: admin, as: :json
+    deliver_through_driver_portal(json.dig("booking", "tasks").first["id"], dan)
+
+    get "/api/v1/admin/bookings/#{booking.reference}", headers: admin
+    tasks = json.dig("booking", "tasks")
+    assert_equal %w[collection delivery], tasks.map { _1["kind"] }
+    assert_equal %w[closed completed], tasks.map { _1["status"] }
+    assert_equal "Guest Sender", tasks[0].dig("proof", "person_name")
+    assert_equal "R. Receiver", tasks[1].dig("proof", "person_name")
+    assert tasks[1].dig("proof", "signature_data").present?
+    assert_equal "Bay 4", tasks[0]["warehouse_note"]
   end
 end

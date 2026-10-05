@@ -58,13 +58,37 @@ module Api
           render json: quote
         end
 
-        def assign_driver
-          driver = params[:driver_id].present? ? User.drivers.find(params[:driver_id]) : nil
-          return render_booking if driver&.id == @booking.driver_id
+        # Assigns the collection or delivery task to a driver, or reassigns it while still open.
+        def assign_task
+          kind = params.require(:kind)
+          return render(json: { error: "Unknown task type" }, status: :unprocessable_entity) unless DriverTask::KINDS.include?(kind)
+          driver = User.drivers.find(params.require(:driver_id))
+          task = kind == "collection" ? @booking.collection_task : @booking.delivery_task
 
-          @booking.update!(driver:)
-          @booking.notes.create!(user: current_user, kind: "internal",
-                                 body: driver ? "Assigned to driver #{driver.name}" : "Driver unassigned")
+          if task
+            return render(json: { error: "This #{kind} task is already finished" }, status: :unprocessable_entity) unless task.open?
+            return render_booking if task.driver_id == driver.id
+            task.update!(driver:)
+            message = "#{kind.capitalize} task reassigned to #{driver.name}"
+          else
+            allowed = kind == "collection" ? %w[booked] : %w[in_warehouse in_transit failed_delivery]
+            unless allowed.include?(@booking.status)
+              hint = kind == "collection" ? "Confirm the booking (status Booked) before assigning the collection." : "Delivery tasks can be assigned once the items are at the warehouse."
+              return render json: { error: hint }, status: :unprocessable_entity
+            end
+            @booking.driver_tasks.create!(kind:, driver:)
+            message = "#{kind.capitalize} task assigned to #{driver.name}"
+          end
+          @booking.sync_driver!
+          @booking.notes.create!(user: current_user, kind: "internal", body: message)
+          render_booking
+        end
+
+        def cancel_task
+          task = @booking.driver_tasks.find(params[:task_id])
+          return render(json: { error: "Only open tasks can be cancelled" }, status: :unprocessable_entity) unless task.open? && task.status == "assigned"
+          task.update!(status: "cancelled")
+          @booking.notes.create!(user: current_user, kind: "internal", body: "#{task.kind.capitalize} task for #{task.driver.name} cancelled")
           render_booking
         end
 

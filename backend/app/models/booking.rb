@@ -1,6 +1,6 @@
 class Booking < ApplicationRecord
   STATUSES = %w[
-    quote_requested awaiting_payment booked collected in_transit
+    quote_requested awaiting_payment booked collected in_warehouse in_transit
     out_for_delivery delivered failed_delivery exception cancelled
   ].freeze
 
@@ -9,6 +9,7 @@ class Booking < ApplicationRecord
     "awaiting_payment" => "Price confirmed – awaiting payment",
     "booked" => "Booked",
     "collected" => "Collected",
+    "in_warehouse" => "At our warehouse",
     "in_transit" => "In transit",
     "out_for_delivery" => "Out for delivery",
     "delivered" => "Delivered",
@@ -19,20 +20,21 @@ class Booking < ApplicationRecord
 
   # Statuses staff or drivers may move a booking to from each state.
   TRANSITIONS = {
-    "quote_requested" => %w[awaiting_payment cancelled],
+    # quote_requested → booked: price agreed with the customer by phone (phase 1, no online payment).
+    "quote_requested" => %w[booked awaiting_payment cancelled],
     "awaiting_payment" => %w[booked cancelled],
     "booked" => %w[collected exception cancelled],
-    "collected" => %w[in_transit exception],
-    "in_transit" => %w[out_for_delivery exception],
+    "collected" => %w[in_warehouse in_transit exception],
+    "in_warehouse" => %w[out_for_delivery in_transit exception],
+    "in_transit" => %w[in_warehouse out_for_delivery exception],
     "out_for_delivery" => %w[delivered failed_delivery exception],
-    "failed_delivery" => %w[out_for_delivery in_transit exception cancelled],
-    "exception" => %w[booked collected in_transit out_for_delivery failed_delivery cancelled],
+    "failed_delivery" => %w[out_for_delivery in_warehouse in_transit exception cancelled],
+    "exception" => %w[booked collected in_warehouse in_transit out_for_delivery failed_delivery cancelled],
     "delivered" => %w[exception],
     "cancelled" => []
   }.freeze
 
-  DRIVER_STATUSES = %w[collected in_transit out_for_delivery delivered failed_delivery exception].freeze
-  ACTIVE_JOB_STATUSES = %w[booked collected in_transit out_for_delivery failed_delivery exception].freeze
+  ACTIVE_JOB_STATUSES = %w[booked collected in_warehouse in_transit out_for_delivery failed_delivery exception].freeze
   NOTIFY_STATUSES = %w[awaiting_payment booked collected out_for_delivery delivered failed_delivery exception cancelled].freeze
   PAYMENT_STATUSES = %w[unpaid paid partially_refunded refunded].freeze
 
@@ -45,7 +47,8 @@ class Booking < ApplicationRecord
   has_many :payments, -> { order(:created_at) }, dependent: :destroy
   has_many :change_requests, -> { order(created_at: :desc) }, dependent: :destroy
   has_many :notifications, -> { order(created_at: :desc) }, dependent: :destroy
-  has_one :proof_of_delivery, dependent: :destroy
+  has_one :proof_of_delivery, dependent: :destroy # legacy single POD, kept for older jobs
+  has_many :driver_tasks, -> { order(:created_at, :id) }, dependent: :destroy
 
   %i[collection_postcode delivery_postcode].each do |attr|
     normalizes attr, with: ->(pc) { UkPostcode.format(pc) || pc.to_s.upcase.strip }
@@ -82,6 +85,15 @@ class Booking < ApplicationRecord
 
   def price_pence = confirmed_price_pence || estimated_price_pence
 
+  def collection_task = driver_tasks.where(kind: "collection").where.not(status: "cancelled").last
+  def delivery_task = driver_tasks.where(kind: "delivery").where.not(status: "cancelled").last
+
+  # Keeps bookings.driver pointing at whoever currently holds the job (for lists and filters).
+  def sync_driver!
+    current = driver_tasks.open.last || driver_tasks.where.not(status: "cancelled").last
+    update!(driver: current&.driver) if current && driver_id != current.driver_id
+  end
+
   # Flags the request for admin review when either end is outside the normal service area.
   def apply_area_review(collection:, delivery:)
     notes = ServiceArea.review_notes(collection:, delivery:)
@@ -113,6 +125,7 @@ class Booking < ApplicationRecord
       self.delivered_at = Time.current if new_status == "delivered"
       save!
       status_events.create!(status: new_status, user:, note:, location:, customer_visible:)
+      driver_tasks.open.update_all(status: "cancelled", updated_at: Time.current) if new_status == "cancelled"
     end
     BookingNotifier.status_changed(self, note:) if NOTIFY_STATUSES.include?(new_status)
     self
@@ -155,7 +168,8 @@ class Booking < ApplicationRecord
       events: (staff ? status_events : status_events.where(customer_visible: true)).includes(:user).map(&:as_json),
       payments: payments.map(&:as_json),
       change_requests: change_requests.map(&:as_json),
-      proof_of_delivery: proof_of_delivery&.as_json
+      proof_of_delivery: proof_of_delivery&.as_json,
+      tasks: driver_tasks.includes(:driver, proof: :user).map(&:as_json)
     )
     if staff
       data.merge!(
@@ -176,7 +190,7 @@ class Booking < ApplicationRecord
       to: "#{delivery_city}, #{delivery_postcode.split.first}",
       collection_date:, estimated_delivery_date:, delivered_at:,
       events: status_events.where(customer_visible: true).map { _1.as_json.except("by", :by) },
-      delivered_to: proof_of_delivery&.recipient_name
+      delivered_to: delivery_task&.proof&.person_name || proof_of_delivery&.recipient_name
     }
   end
 

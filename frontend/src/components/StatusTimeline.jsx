@@ -11,7 +11,8 @@ const STEP_META = {
 
 /** Five-step progress bar. Exceptions keep the last good step highlighted. */
 export function ProgressTrack({ status, events = [] }) {
-  const reached = new Set(events.map((e) => e.status));
+  // "At our warehouse" sits within the in-transit step of the customer's progress bar.
+  const reached = new Set(events.map((e) => (e.status === "in_warehouse" ? "in_transit" : e.status)));
   if (status === "delivered") TRACKING_STEPS.forEach((s) => reached.add(s));
   const lastIdx = TRACKING_STEPS.reduce((acc, s, i) => (reached.has(s) ? i : acc), -1);
   const pct = lastIdx <= 0 ? 0 : (lastIdx / (TRACKING_STEPS.length - 1)) * 100;

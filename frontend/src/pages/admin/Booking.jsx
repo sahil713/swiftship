@@ -8,6 +8,7 @@ import { Alert, Badge, Field, Modal, Spinner, StatusBadge } from "../../componen
 import { EventTimeline } from "../../components/StatusTimeline.jsx";
 import { useToast } from "../../components/Toast.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
+import ProofView from "../../components/ProofView.jsx";
 
 const NOTE_KINDS = { internal: "Internal note", collection_issue: "Collection issue", delivery_issue: "Delivery issue", damage: "Damage report" };
 
@@ -113,6 +114,8 @@ export default function Booking() {
             </dl>
           </div>
 
+          <DriverTasks booking={b} drivers={data.drivers} act={act} busy={busy} />
+
           <form className="card stack" onSubmit={submitStatus}>
             <h3 style={{ margin: 0 }}>Update status</h3>
             {b.allowed_transitions.length === 0 ? <p className="muted small">No further status changes are possible.</p> : (
@@ -159,7 +162,7 @@ export default function Booking() {
 
           {b.proof_of_delivery && (
             <div className="card">
-              <h3>Proof of delivery</h3>
+              <h3>Proof of delivery (earlier system)</h3>
               <p>Signed by <strong>{b.proof_of_delivery.recipient_name}</strong> · {dateTime(b.proof_of_delivery.created_at)} · driver {b.proof_of_delivery.driver}</p>
               {b.proof_of_delivery.notes && <p className="muted">{b.proof_of_delivery.notes}</p>}
               <div className="row" style={{ alignItems: "flex-start" }}>
@@ -191,14 +194,6 @@ export default function Booking() {
                 {reprice && (reprice.ok ? <p className="small muted" style={{ margin: 0 }}>Current pricing rules give <strong>{money(reprice.total_pence)}</strong>. <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPrice(poundsFromPence(reprice.total_pence))}>Use this</button></p> : <Alert type="error">{reprice.errors.join(" ")}</Alert>)}
               </form>
             )}
-          </div>
-
-          <div className="card stack">
-            <h3 style={{ margin: 0 }}>Driver</h3>
-            <select className="select" aria-label="Assigned driver" value={b.driver?.id || ""} onChange={(e) => act("/assign_driver", { driver_id: e.target.value || null }, e.target.value ? "Driver assigned" : "Driver unassigned")} disabled={busy}>
-              <option value="">Unassigned</option>
-              {data.drivers.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-            </select>
           </div>
 
           <div className="card stack">
@@ -289,5 +284,74 @@ function EditForm({ booking, onSave, busy }) {
       <p className="small muted" style={{ margin: 0 }}>Editing doesn't change the price automatically — use Recalculate and Confirm price if needed.</p>
       <button className="btn btn-primary" disabled={busy}>Save changes</button>
     </form>
+  );
+}
+
+const TASK_TONE = { assigned: "warning", started: "accent", collected: "info", closed: "good", completed: "good", cancelled: "muted" };
+
+/** Collection and delivery tasks for the job, with assignment and the drivers' POC / POD records. */
+function DriverTasks({ booking: b, drivers, act, busy }) {
+  const tasks = b.tasks || [];
+  const live = (kind) => [...tasks].reverse().find((t) => t.kind === kind && t.status !== "cancelled");
+  const canCreate = { collection: b.status === "booked", delivery: ["in_warehouse", "in_transit", "failed_delivery"].includes(b.status) };
+  const hint = {
+    collection: b.status === "quote_requested" || b.status === "awaiting_payment" ? "Mark the booking as Booked (price agreed) to assign the collection." : null,
+    delivery: "Created automatically when the driver closes the collection at the warehouse.",
+  };
+
+  const block = (kind) => {
+    const t = live(kind);
+    const title = kind === "collection" ? "Collection task" : "Delivery task";
+    return (
+      <div key={kind} style={{ borderTop: kind === "delivery" ? "1px solid var(--border)" : 0, paddingTop: kind === "delivery" ? 16 : 0 }}>
+        <div className="row-between" style={{ marginBottom: 10 }}>
+          <strong>{title}</strong>
+          {t && <Badge tone={TASK_TONE[t.status]}>{t.status_label}</Badge>}
+        </div>
+        {t ? (
+          <div className="stack">
+            <div className="row" style={{ gap: 8 }}>
+              <label className="small muted" htmlFor={`drv-${kind}`}>Driver</label>
+              <select id={`drv-${kind}`} className="select" style={{ maxWidth: 240, minHeight: 38 }} value={t.driver.id} disabled={busy || !["assigned", "started", "collected"].includes(t.status)}
+                onChange={(e) => act("/assign_task", { kind, driver_id: e.target.value }, "Task reassigned")}>
+                {!drivers.some((d) => d.id === t.driver.id) && <option value={t.driver.id}>{t.driver.name}</option>}
+                {drivers.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+              </select>
+              {t.status === "assigned" && <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => window.confirm(`Cancel this ${kind} task?`) && act(`/tasks/${t.id}/cancel`, {}, "Task cancelled")}>Cancel task</button>}
+            </div>
+            <div className="small muted">
+              Assigned {dateTime(t.created_at)}
+              {t.collected_at && ` · collected ${dateTime(t.collected_at)}`}
+              {t.closed_at && ` · in warehouse ${dateTime(t.closed_at)}`}
+              {t.started_at && ` · on the way ${dateTime(t.started_at)}`}
+              {t.completed_at && ` · completed ${dateTime(t.completed_at)}`}
+            </div>
+            {t.warehouse_note && <div className="small">Warehouse note: <strong>{t.warehouse_note}</strong></div>}
+            {t.proof ? (
+              <div style={{ background: "var(--bg-subtle)", borderRadius: 12, padding: 14 }}>
+                <div className="small" style={{ fontWeight: 700, marginBottom: 8 }}>{kind === "collection" ? "Proof of Collection (POC)" : "Proof of Delivery (POD)"}</div>
+                <ProofView proof={t.proof} kind={kind} />
+              </div>
+            ) : <p className="small muted" style={{ margin: 0 }}>No {kind === "collection" ? "proof of collection" : "proof of delivery"} yet.</p>}
+          </div>
+        ) : canCreate[kind] ? (
+          <div className="row">
+            <select className="select" aria-label={`Driver for ${kind}`} defaultValue="" style={{ maxWidth: 240, minHeight: 38 }} disabled={busy}
+              onChange={(e) => e.target.value && act("/assign_task", { kind, driver_id: e.target.value }, `${title} assigned`)}>
+              <option value="">Assign to driver…</option>
+              {drivers.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+            </select>
+          </div>
+        ) : <p className="small muted" style={{ margin: 0 }}>{hint[kind] || "Not available at this stage."}</p>}
+      </div>
+    );
+  };
+
+  return (
+    <div className="card stack">
+      <h3 style={{ margin: 0 }}>Driver tasks</h3>
+      {block("collection")}
+      {block("delivery")}
+    </div>
   );
 }

@@ -155,6 +155,25 @@ if Booking.none?
     end
   end
 
+  # Driver portal demo: a collection waiting for Dan, and a job at the warehouse ready for delivery.
+  [["Box of vinyl records", "12 Kings Road", "Reading", "RG1 3AR", "booked"],
+   ["Garden bench", "7 Park Lane", "Croydon", "CR0 1AA", "in_warehouse"]].each do |item, line1, city, postcode, stage|
+    attrs = base.merge(item_description: item, weight_kg: 15, quantity: 1, delivery_line1: line1, delivery_city: city,
+                       delivery_postcode: postcode, special_requirements: "Please call 30 minutes before arrival")
+    booking = Booking.create!(attrs.merge(service: standard, estimated_delivery_date: 3.days.from_now.to_date))
+    booking.status_events.create!(status: "quote_requested", note: "Quote request received")
+    booking.transition_to!("booked", user: ops, note: "Price agreed by phone")
+    if stage == "booked"
+      booking.driver_tasks.create!(kind: "collection", driver:)
+    else
+      task = booking.driver_tasks.create!(kind: "collection", driver:)
+      task.record_collection!(user: driver, person_name: "Casey Customer", occurred_at: 1.day.ago,
+                              photos: ["data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="])
+      task.close_at_warehouse!(user: driver, note: "Bay 2")
+    end
+    booking.sync_driver!
+  end
+
   Enquiry.create!(name: "Sam Smith", email: "sam@example.com", subject: "Can you deliver a piano?",
                   message: "I need an upright piano moved from Leeds to York next month. Is that something you can do?")
 end

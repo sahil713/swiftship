@@ -25,8 +25,8 @@ import AdminEnquiries from "./pages/admin/Enquiries.jsx";
 import AdminChangeRequests from "./pages/admin/ChangeRequests.jsx";
 import AdminStaff from "./pages/admin/Staff.jsx";
 import AdminSettings from "./pages/admin/Settings.jsx";
-import DriverJobs from "./pages/driver/Jobs.jsx";
-import DriverJob from "./pages/driver/Job.jsx";
+import DriverTasks from "./pages/driver/Tasks.jsx";
+import DriverTask from "./pages/driver/Task.jsx";
 
 const ACCOUNT_LINKS = [
   { to: "/account", label: "My orders", icon: Package, end: true },
@@ -40,7 +40,7 @@ const ADMIN_LINKS = [
   { to: "/admin/change-requests", label: "Change requests", icon: RefreshCcw },
   { to: "/admin/enquiries", label: "Enquiries", icon: MessageSquare },
   { to: "/admin/customers", label: "Customers", icon: Users },
-  { to: "/driver", label: "Operations view", icon: Truck },
+  { to: "/driver", label: "Driver tasks", icon: Truck },
   { section: "Configuration", roles: ["admin", "operations"] },
   { to: "/admin/pricing", label: "Services & pricing", icon: Tags },
   { to: "/admin/staff", label: "Staff & drivers", icon: IdCard },
@@ -48,7 +48,7 @@ const ADMIN_LINKS = [
 ];
 
 const DRIVER_LINKS = [
-  { to: "/driver", label: "Active jobs", icon: Truck, end: true },
+  { to: "/driver", label: "My tasks", icon: Truck, end: true },
   { to: "/driver/completed", label: "Completed", icon: CheckCheck },
 ];
 
@@ -92,9 +92,9 @@ export default function App() {
       </Route>
 
       <Route element={<RequireRole roles={["driver", "operations", "admin"]}><AppLayout title="Operations" links={DRIVER_LINKS} /></RequireRole>}>
-        <Route path="driver" element={<DriverJobs />} />
-        <Route path="driver/completed" element={<DriverJobs completed />} />
-        <Route path="driver/jobs/:reference" element={<DriverJob />} />
+        <Route path="driver" element={<DriverTasks />} />
+        <Route path="driver/completed" element={<DriverTasks completed />} />
+        <Route path="driver/tasks/:id" element={<DriverTask />} />
       </Route>
     </Routes>
   );

@@ -8,6 +8,7 @@ import { date, dateTime, humanize, money } from "../lib/format.js";
 import { Alert, Badge, Field, Modal, Spinner, StatusBadge } from "../components/ui.jsx";
 import { EventTimeline, ProgressTrack } from "../components/StatusTimeline.jsx";
 import { useToast } from "../components/Toast.jsx";
+import ProofView from "../components/ProofView.jsx";
 import { usePricingEnabled } from "../lib/site.js";
 
 function PaymentForm({ booking, token, onPaid }) {
@@ -181,6 +182,10 @@ export default function OrderPage({ embedded = false }) {
             </dl>
           </div>
 
+          {(() => {
+            const pod = [...(b.tasks || [])].reverse().find((t) => t.kind === "delivery" && t.status === "completed")?.proof;
+            return pod ? <div className="card"><h3>Proof of delivery</h3><ProofView proof={{ ...pod, recorded_by: undefined }} kind="delivery" /></div> : null;
+          })()}
           {b.proof_of_delivery && (
             <div className="card">
               <h3>Proof of delivery</h3>

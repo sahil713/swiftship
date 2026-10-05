@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_10_06_000001) do
+ActiveRecord::Schema[8.0].define(version: 2026_10_06_000002) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -119,6 +119,24 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_06_000001) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["postcode_areas"], name: "index_delivery_areas_on_postcode_areas", using: :gin
+  end
+
+  create_table "driver_tasks", force: :cascade do |t|
+    t.bigint "booking_id", null: false
+    t.bigint "driver_id", null: false
+    t.string "kind", null: false
+    t.string "status", default: "assigned", null: false
+    t.text "warehouse_note"
+    t.datetime "started_at"
+    t.datetime "collected_at"
+    t.datetime "closed_at"
+    t.datetime "completed_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["booking_id", "kind"], name: "index_driver_tasks_on_booking_id_and_kind"
+    t.index ["booking_id"], name: "index_driver_tasks_on_booking_id"
+    t.index ["driver_id", "status"], name: "index_driver_tasks_on_driver_id_and_status"
+    t.index ["driver_id"], name: "index_driver_tasks_on_driver_id"
   end
 
   create_table "enquiries", force: :cascade do |t|
@@ -235,6 +253,21 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_06_000001) do
     t.index ["code"], name: "index_surcharges_on_code", unique: true
   end
 
+  create_table "task_proofs", force: :cascade do |t|
+    t.bigint "driver_task_id", null: false
+    t.bigint "user_id"
+    t.string "kind", null: false
+    t.string "person_name", null: false
+    t.datetime "occurred_at", null: false
+    t.text "notes"
+    t.text "signature_data"
+    t.jsonb "photos", default: [], null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["driver_task_id"], name: "index_task_proofs_on_driver_task_id", unique: true
+    t.index ["user_id"], name: "index_task_proofs_on_user_id"
+  end
+
   create_table "users", force: :cascade do |t|
     t.string "name", null: false
     t.string "email", null: false
@@ -256,6 +289,8 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_06_000001) do
   add_foreign_key "bookings", "users", column: "driver_id"
   add_foreign_key "change_requests", "bookings"
   add_foreign_key "change_requests", "users"
+  add_foreign_key "driver_tasks", "bookings"
+  add_foreign_key "driver_tasks", "users", column: "driver_id"
   add_foreign_key "enquiries", "bookings"
   add_foreign_key "notifications", "bookings"
   add_foreign_key "payments", "bookings"
@@ -263,4 +298,6 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_06_000001) do
   add_foreign_key "proof_of_deliveries", "users"
   add_foreign_key "status_events", "bookings"
   add_foreign_key "status_events", "users"
+  add_foreign_key "task_proofs", "driver_tasks"
+  add_foreign_key "task_proofs", "users"
 end
