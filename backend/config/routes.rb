@@ -54,7 +54,9 @@ Rails.application.routes.draw do
             post :unassign
           end
         end
-        resources :enquiries, only: %i[index update]
+        resources :enquiries, only: %i[index update] do
+          post :notify, on: :member
+        end
         resources :change_requests, only: :index
         get "settings", to: "settings#show"
         patch "settings", to: "settings#update"

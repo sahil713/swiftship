@@ -1,0 +1,27 @@
+<% e = @enquiry %>
+<div style="background:#f6f7fb;padding:24px 12px;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif">
+  <div style="max-width:640px;margin:0 auto;background:#ffffff;border:1px solid #dde1ec;border-radius:16px;overflow:hidden">
+    <div style="background:#0b1a4a;color:#ffffff;padding:20px 24px">
+      <div style="font-size:13px;opacity:.85">Shift Logistics · New contact message</div>
+      <div style="font-size:22px;font-weight:800;margin-top:4px"><%= e.subject %></div>
+      <div style="font-size:14px;margin-top:4px">from <%= e.name %></div>
+    </div>
+    <div style="padding:20px 24px 24px">
+      <p style="font-size:15px;color:#3d4760;margin:0 0 16px">
+        Received <%= e.created_at.in_time_zone("London").strftime("%-d %b %Y, %H:%M") %>.
+        Replying to this email goes to <strong><%= e.email %></strong>.
+      </p>
+      <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;font-size:14px">
+        <tr><td style="padding:6px 12px 6px 0;color:#6a7390;width:110px">Name</td><td style="padding:6px 0;font-weight:600"><%= e.name %></td></tr>
+        <tr><td style="padding:6px 12px 6px 0;color:#6a7390">Email</td><td style="padding:6px 0;font-weight:600"><a href="mailto:<%= e.email %>"><%= e.email %></a></td></tr>
+        <tr><td style="padding:6px 12px 6px 0;color:#6a7390">Phone</td><td style="padding:6px 0;font-weight:600"><%= e.phone.presence || "Not given" %></td></tr>
+        <% if e.booking %><tr><td style="padding:6px 12px 6px 0;color:#6a7390">Booking</td><td style="padding:6px 0;font-weight:600"><%= e.booking.reference %></td></tr><% end %>
+      </table>
+      <div style="margin-top:18px;padding:16px;border-radius:12px;background:#f6f7fb;font-size:15px;color:#0e1526;white-space:pre-wrap"><%= e.message %></div>
+      <div style="margin-top:24px">
+        <a href="<%= @admin_url %>" style="display:inline-block;background:#1f74e6;color:#ffffff;text-decoration:none;font-weight:700;padding:12px 22px;border-radius:999px">Open enquiries in admin</a>
+      </div>
+      <p style="font-size:12px;color:#6a7390;margin-top:24px"><%= ApplicationMailer::BRAND_FULL %></p>
+    </div>
+  </div>
+</div>

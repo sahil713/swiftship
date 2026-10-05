@@ -277,4 +277,17 @@ class BookingFlowTest < ActionDispatch::IntegrationTest
     assert tasks[1].dig("proof", "signature_data").present?
     assert_equal "Bay 4", tasks[0]["warehouse_note"]
   end
+
+  test "contact-form messages are emailed to the admin address" do
+    Setting.set(:enquiry_notification_email, "office@example.com")
+    ActionMailer::Base.deliveries.clear
+    post "/api/v1/enquiries", params: { enquiry: { name: "Jo Bloggs", email: "jo@example.com", phone: "07700 900333", subject: "Moving a sofa", message: "Can you collect from Leeds next week?" } }, as: :json
+    assert_response :created
+    mail = ActionMailer::Base.deliveries.last
+    assert_equal ["office@example.com"], mail.to
+    assert_equal ["jo@example.com"], mail.reply_to
+    assert_match "Moving a sofa", mail.subject
+    assert_includes mail.text_part.decoded, "Can you collect from Leeds next week?"
+    assert_equal "sent", Enquiry.find(json["id"]).email_status
+  end
 end

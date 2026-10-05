@@ -23,4 +23,19 @@ class EnquiryNotifier
   rescue StandardError => e
     Rails.logger.error("Enquiry notification error for #{booking.reference}: #{e.message}")
   end
+
+  # Contact-form messages go to the same admin address as quote requests.
+  def self.new_contact(enquiry)
+    to = recipients
+    return enquiry.update_column(:email_status, "no_recipient") if to.empty?
+
+    status = begin
+      AdminMailer.new_contact_enquiry(enquiry, to:).deliver_now
+      ApplicationMailer.delivers? ? "sent" : "not_sent"
+    rescue StandardError => e
+      Rails.logger.error("Contact enquiry email failed for ##{enquiry.id}: #{e.class}: #{e.message}")
+      "failed"
+    end
+    enquiry.update_column(:email_status, status)
+  end
 end

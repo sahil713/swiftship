@@ -8,7 +8,7 @@ class Enquiry < ApplicationRecord
   validates :status, inclusion: { in: STATUSES }
 
   def as_json(*)
-    slice(:id, :name, :email, :phone, :subject, :message, :status, :response, :created_at)
+    slice(:id, :name, :email, :phone, :subject, :message, :status, :response, :email_status, :created_at)
       .merge(booking_reference: booking&.reference)
   end
 end

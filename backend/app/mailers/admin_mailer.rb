@@ -14,6 +14,15 @@ class AdminMailer < ApplicationMailer
     end
   end
 
+  def new_contact_enquiry(enquiry, to:)
+    @enquiry = enquiry
+    @admin_url = "#{ENV.fetch('FRONTEND_ORIGIN', 'http://localhost:5173')}/admin/enquiries"
+    mail(to:, reply_to: enquiry.email, subject: "New contact message from #{enquiry.name}: #{enquiry.subject}") do |format|
+      format.text
+      format.html
+    end
+  end
+
   private
 
   def row(value) = value.presence || "—"

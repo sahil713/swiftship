@@ -9,6 +9,13 @@ module Api
           render json: { enquiries:, meta: }
         end
 
+        # Sends (or re-sends) the admin alert email for a contact-form message.
+        def notify
+          enquiry = Enquiry.find(params[:id])
+          EnquiryNotifier.new_contact(enquiry)
+          render json: enquiry.reload
+        end
+
         def update
           enquiry = Enquiry.find(params[:id])
           enquiry.update!(params.require(:enquiry).permit(:status, :response))

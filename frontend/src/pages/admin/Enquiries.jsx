@@ -34,7 +34,10 @@ export default function Enquiries() {
               <button key={q.id} className="card card-hover" style={{ textAlign: "left", cursor: "pointer", width: "100%" }} onClick={() => setActive({ ...q, response: q.response || "" })}>
                 <div className="row-between">
                   <strong>{q.subject}</strong>
-                  <Badge tone={TONE[q.status]}>{humanize(q.status)}</Badge>
+                  <span className="row" style={{ gap: 6 }}>
+                    {q.email_status && q.email_status !== "sent" && <Badge tone="warning" plain>Email not sent</Badge>}
+                    <Badge tone={TONE[q.status]}>{humanize(q.status)}</Badge>
+                  </span>
                 </div>
                 <div className="small muted">{q.name} · {q.email} · {dateTime(q.created_at)}{q.booking_reference ? ` · ${q.booking_reference}` : ""}</div>
                 <p style={{ margin: "8px 0 0" }}>{q.message.length > 180 ? `${q.message.slice(0, 180)}…` : q.message}</p>
@@ -58,6 +61,7 @@ export default function Enquiries() {
             <Field label="Response / internal notes" htmlFor="eq-resp"><textarea id="eq-resp" className="textarea" rows={4} value={active.response} onChange={(e) => setActive({ ...active, response: e.target.value })} /></Field>
             <div className="row">
               <button className="btn btn-primary">Save</button>
+              <button type="button" className="btn btn-ghost" onClick={async () => { const r = await api(`/admin/enquiries/${active.id}/notify`, { method: "POST" }); toast(r.email_status === "sent" ? "Email alert sent" : "Email couldn't be sent", r.email_status === "sent" ? "success" : "error"); reload(); }}>Send email alert</button>
               <a className="btn btn-secondary" href={`mailto:${active.email}?subject=${encodeURIComponent(`Re: ${active.subject}`)}&body=${encodeURIComponent(active.response)}`}>Reply by email</a>
             </div>
           </form>
