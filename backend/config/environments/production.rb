@@ -58,7 +58,10 @@ Rails.application.configure do
   config.ssl_options = { redirect: { exclude: ->(request) { request.path == "/up" } } }
 
   config.action_mailer.default_url_options = { host: ENV.fetch("APP_HOST", "example.com") }
-  if ENV["SMTP_ADDRESS"].present?
+  if ENV["BREVO_API_KEY"].present?
+    # Brevo's HTTPS API – works on hosting plans that block outgoing SMTP.
+    config.action_mailer.delivery_method = :brevo
+  elsif ENV["SMTP_ADDRESS"].present?
     config.action_mailer.delivery_method = :smtp
     config.action_mailer.smtp_settings = {
       address: ENV["SMTP_ADDRESS"], port: ENV.fetch("SMTP_PORT", 587).to_i,
