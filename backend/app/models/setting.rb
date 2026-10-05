@@ -6,7 +6,7 @@ class Setting < ApplicationRecord
     "pricing_enabled" => false,
     # Where new enquiries are emailed. Blank = every active admin user.
     "enquiry_notification_email" => "",
-    "support_email" => "help@swiftship.example",
+    "support_email" => "help@mahajanlogistics.example",
     "support_phone" => "0330 123 4567"
   }.freeze
 

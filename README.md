@@ -1,4 +1,6 @@
-# SwiftShip – UK Shipping & Logistics
+# Mahajan Logistics — Powered by V&V Logistics and Rentals Ltd
+
+UK shipping & logistics website.
 
 Customers get instant quotes, book and pay for deliveries, and track shipments. Staff manage bookings, pricing and customers. Drivers update statuses and record proof of delivery.
 

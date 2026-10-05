@@ -61,6 +61,8 @@ class BookingFlowTest < ActionDispatch::IntegrationTest
     assert_equal %w[quote_requested awaiting_payment booked collected in_transit out_for_delivery delivered], json["events"].map { _1["status"] }
     refute_includes response.body, "Guest Sender", "tracking must not leak names"
     assert booking.notifications.where(channel: "email").exists?
+    assert booking.notifications.where(channel: "email").all? { _1.subject.start_with?("Mahajan Logistics:") }
+    assert booking.notifications.where(channel: "sms").all? { _1.body.start_with?("Mahajan Logistics:") }
   end
 
   test "incomplete quotes wait for staff price confirmation" do
@@ -142,6 +144,10 @@ class BookingFlowTest < ActionDispatch::IntegrationTest
       assert_includes html, ERB::Util.h(detail)
     end
     refute_match(/£/, text, "admin email shouldn't contain an automatic price")
+    assert_match(/\AMahajan Logistics/, mail[:from].display_names.first.to_s)
+    assert_includes text, "Mahajan Logistics — Powered by V&V Logistics and Rentals Ltd"
+    assert_includes html, ERB::Util.h("Mahajan Logistics — Powered by V&V Logistics and Rentals Ltd")
+    refute_match(/swiftship/i, text + html)
     assert booking.notifications.exists?(recipient: "ops-inbox@example.com", status: "sent")
   end
 

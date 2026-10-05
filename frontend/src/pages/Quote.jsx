@@ -8,6 +8,7 @@ import { date } from "../lib/format.js";
 import { serviceIcon } from "../lib/serviceIcons.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import { Alert, Field } from "../components/ui.jsx";
+import { BRAND } from "../lib/brand.js";
 
 const STEPS = ["Route & service", "Your item", "Addresses", "Review"];
 const today = () => new Date().toISOString().slice(0, 10);
@@ -333,7 +334,8 @@ function Submitted({ booking, signedIn }) {
           <CheckCircle2 size={38} />
         </motion.div>
         <h1 style={{ fontSize: "clamp(1.6rem, 4vw, 2.2rem)" }}>Thank you, we have received your request</h1>
-        <p className="lead" style={{ margin: "0 auto 24px" }}>Our team will contact you shortly to discuss your quotation.</p>
+        <p className="lead" style={{ margin: "0 auto 8px" }}>Our team will contact you shortly to discuss your quotation.</p>
+        <p className="small muted" style={{ margin: "0 auto 24px" }}>— The {BRAND.name} team · {BRAND.poweredBy}</p>
         <dl className="dl" style={{ maxWidth: 380, margin: "0 auto 24px", textAlign: "left" }}>
           <dt>Request reference</dt><dd className="mono">{booking.reference}</dd>
           <dt>Route</dt><dd>{booking.collection_postcode} → {booking.delivery_postcode}</dd>

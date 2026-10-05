@@ -3,6 +3,7 @@ import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-do
 import { Menu, X, Truck, LogOut, User } from "lucide-react";
 import ThemeToggle from "./ThemeToggle.jsx";
 import { homeFor, useAuth } from "../context/AuthContext.jsx";
+import { BRAND } from "../lib/brand.js";
 
 const NAV = [
   { to: "/services", label: "Services" },
@@ -14,9 +15,12 @@ const NAV = [
 
 export function Brand({ to = "/" }) {
   return (
-    <Link to={to} className="brand" aria-label="SwiftShip home">
+    <Link to={to} className="brand" aria-label={`${BRAND.full} – home`}>
       <span className="brand-mark"><Truck size={19} strokeWidth={2.4} /></span>
-      SwiftShip
+      <span className="brand-text">
+        <span className="brand-name">{BRAND.name}</span>
+        <span className="brand-powered">{BRAND.poweredBy}</span>
+      </span>
     </Link>
   );
 }
@@ -127,7 +131,7 @@ export function Footer() {
           </div>
         </div>
         <div className="footer-bottom row-between">
-          <span>© {new Date().getFullYear()} SwiftShip Logistics Ltd. UK mainland, Highlands & Islands and Northern Ireland. We don't serve the Republic of Ireland.</span>
+          <span>© {new Date().getFullYear()} {BRAND.name}. {BRAND.poweredBy}. UK mainland, Highlands & Islands and Northern Ireland. We don't serve the Republic of Ireland.</span>
           <span>Videos: Pexels</span>
         </div>
       </div>

@@ -17,11 +17,12 @@ class BookingNotifier
   def self.status_changed(booking, note: nil)
     template = MESSAGES[booking.status] or return
     text = format(template, ref: booking.reference, tn: booking.tracking_number, price: Money.format(booking.price_pence))
-    subject = "#{Booking.status_label(booking.status)} – #{booking.reference}"
+    subject = "#{ApplicationMailer::BRAND_NAME}: #{Booking.status_label(booking.status)} – #{booking.reference}"
 
-    email_body = [text, note.presence, "Track your shipment: #{tracking_url(booking)}"].compact.join("\n\n")
+    email_body = [text, note.presence, "Track your shipment: #{tracking_url(booking)}",
+                  "— #{ApplicationMailer::BRAND_FULL}"].compact.join("\n\n")
     deliver_email(booking, booking.customer_email, subject, email_body)
-    booking.notifications.create!(channel: "sms", recipient: booking.delivery_phone, body: "SwiftShip: #{text}", status: "logged") if sms_worthy?(booking.status)
+    booking.notifications.create!(channel: "sms", recipient: booking.delivery_phone, body: "#{ApplicationMailer::BRAND_NAME}: #{text}", status: "logged") if sms_worthy?(booking.status)
   rescue StandardError => e
     Rails.logger.error("Notification failed for #{booking.reference}: #{e.message}")
   end
