@@ -51,7 +51,8 @@ function PostcodeField({ id, label, value, onChange, onResult }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debounced]);
 
-  const state = check ? (check.ok ? "valid" : "invalid") : "";
+  const state = check ? (!check.ok ? "invalid" : check.review ? "review" : "valid") : "";
+  const msgClass = check ? (!check.ok ? "error-text" : check.review ? "warn-text" : "ok-text") : "hint";
   return (
     <div className="field">
       <label htmlFor={id}>{label}</label>
@@ -59,8 +60,11 @@ function PostcodeField({ id, label, value, onChange, onResult }) {
         <input id={id} className={`input ${state}`} value={value} onChange={(e) => onChange(e.target.value.toUpperCase())} placeholder="e.g. SW1A 1AA" autoComplete="postal-code" aria-invalid={check && !check.ok} aria-describedby={`${id}-msg`} required />
         {loading && <Loader2 size={18} className="spin-icon" style={{ position: "absolute", right: 12, top: 14, animation: "spin 1s linear infinite", color: "var(--text-muted)" }} />}
       </div>
-      <span id={`${id}-msg`} className={check ? (check.ok ? "ok-text" : "error-text") : "hint"} aria-live="polite">
-        {check ? (check.ok ? `✓ ${check.region}${check.district ? ` · ${check.district}` : ""}` : check.message) : "UK postcodes only"}
+      <span id={`${id}-msg`} className={msgClass} aria-live="polite">
+        {!check ? "UK postcodes only"
+          : !check.ok ? check.message
+          : check.review ? `⚠ ${check.message}`
+          : `✓ ${check.region}${check.district ? ` · ${check.district}` : ""}`}
       </span>
     </div>
   );
@@ -283,6 +287,13 @@ export default function Quote() {
                     {form.special_requirements && <><dt>Special requirements</dt><dd style={{ whiteSpace: "pre-wrap" }}>{form.special_requirements}</dd></>}
                   </dl>
                   <hr className="divider" />
+                  {(checks.collection?.review || checks.delivery?.review) && (
+                    <div style={{ marginBottom: 12 }}>
+                      <Alert type="warning" title="Outside our normal service area">
+                        {[checks.collection?.review && `Collection (${checks.collection.postcode})`, checks.delivery?.review && `Delivery (${checks.delivery.postcode})`].filter(Boolean).join(" and ")} {checks.collection?.review && checks.delivery?.review ? "are" : "is"} in an area we don't normally serve. You can still send your request – our team will check whether we can take the job and call you.
+                      </Alert>
+                    </div>
+                  )}
                   <Alert type="info" title="What happens next">
                     Our team will review your request and call you on {form.collection_phone || "the number you gave"} to discuss your quotation. Nothing is booked or charged until you've agreed a price with us.
                   </Alert>

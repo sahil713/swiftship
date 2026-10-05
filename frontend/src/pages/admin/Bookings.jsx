@@ -11,7 +11,7 @@ export default function Bookings() {
   const [q, setQ] = useState(params.get("q") || "");
   const filters = {
     q: params.get("q") || "", status: params.get("status") || "", service_id: params.get("service_id") || "",
-    payment_status: params.get("payment_status") || "", page: params.get("page") || 1,
+    payment_status: params.get("payment_status") || "", area_review: params.get("area_review") || "", page: params.get("page") || 1,
   };
   const { data, loading } = useApi("/admin/bookings", filters);
   const services = useApi("/services").data || [];
@@ -48,6 +48,11 @@ export default function Bookings() {
           <option value="">All services</option>
           {services.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
+        <label className="sr-only" htmlFor="bk-area">Service area</label>
+        <select id="bk-area" className="select" value={filters.area_review} onChange={(e) => update("area_review", e.target.value)}>
+          <option value="">All locations</option>
+          <option value="1">Needs area review</option>
+        </select>
         <label className="sr-only" htmlFor="bk-pay">Payment</label>
         <select id="bk-pay" className="select" value={filters.payment_status} onChange={(e) => update("payment_status", e.target.value)}>
           <option value="">Any payment</option>
@@ -70,7 +75,7 @@ export default function Bookings() {
                     <td>{b.service.name}</td>
                     <td>{date(b.collection_date)}</td>
                     <td>{b.driver?.name || <span className="muted">—</span>}</td>
-                    <td><StatusBadge status={b.status} /></td>
+                    <td><StatusBadge status={b.status} />{b.area_review && <div style={{ marginTop: 4 }}><Badge tone="warning">Area review</Badge></div>}</td>
                     <td><Badge tone={b.payment_status === "paid" ? "good" : b.payment_status === "unpaid" ? "neutral" : "warning"} plain>{humanize(b.payment_status)}</Badge></td>
                     <td className="num">{money(b.price_pence)}{!b.confirmed_price_pence && <div className="small muted">est.</div>}</td>
                   </tr>

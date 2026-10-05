@@ -12,7 +12,7 @@
 <div style="background:#f6f7fb;padding:24px 12px;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif">
   <div style="max-width:640px;margin:0 auto;background:#ffffff;border:1px solid #dde1ec;border-radius:16px;overflow:hidden">
     <div style="background:#f0501a;color:#ffffff;padding:20px 24px">
-      <div style="font-size:13px;opacity:.9">SwiftShip · New quote request</div>
+      <div style="font-size:13px;opacity:.9">SwiftShip · New quote request<%= b.area_review ? " · AREA REVIEW" : "" %></div>
       <div style="font-size:24px;font-weight:800;margin-top:4px"><%= b.reference %></div>
       <div style="font-size:14px;margin-top:4px"><%= b.collection_postcode %> → <%= b.delivery_postcode %> · <%= b.service.name %></div>
     </div>
@@ -21,6 +21,15 @@
         Received <%= b.created_at.in_time_zone("London").strftime("%-d %b %Y, %H:%M") %>.
         Please call the customer to discuss pricing. Replying to this email goes to <strong><%= b.customer_email %></strong>.
       </p>
+      <% if b.area_review %>
+        <div style="margin:20px 0 0;padding:14px 16px;border-radius:12px;background:#fdf0d2;border:1px solid #f2bd4b;color:#5c3b00">
+          <div style="font-weight:800;font-size:15px">⚠ Service area review needed</div>
+          <div style="font-size:14px;margin-top:4px">This request is outside our normal service area. Check whether we can take the job before quoting.</div>
+          <ul style="margin:8px 0 0;padding-left:18px;font-size:14px">
+            <% b.area_review_notes.to_s.each_line do |line| %><li><%= line.strip %></li><% end %>
+          </ul>
+        </div>
+      <% end %>
       <%== section.("Customer", [["Email", b.customer_email], ["Account", b.user ? "#{b.user.name} (registered)" : "Guest"]]) %>
       <%== section.("Collection", [
             ["Contact", b.collection_contact_name], ["Phone", b.collection_phone], ["Email", b.collection_email],

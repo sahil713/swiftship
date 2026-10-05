@@ -40,6 +40,7 @@ module Api
         booking.estimated_price_pence = quote.total_pence
         booking.estimated_delivery_date = quote.estimated_delivery_date
         booking.price_breakdown = { lines: quote.lines, warnings: quote.warnings, chargeable_weight_kg: quote.chargeable_weight_kg }
+        booking.apply_area_review(collection: quote.collection, delivery: quote.delivery)
 
         Booking.transaction do
           booking.save!
@@ -113,10 +114,14 @@ module Api
         booking.customer_email = current_user&.email || attrs[:collection_email]
         booking.collection_postcode = collection.postcode
         booking.delivery_postcode = delivery.postcode
+        booking.apply_area_review(collection:, delivery:)
 
         Booking.transaction do
           booking.save!
           booking.status_events.create!(status: "quote_requested", note: "Quote request received – our team will call to discuss pricing")
+          if booking.area_review
+            booking.notes.create!(kind: "internal", body: "Service area review needed:\n#{booking.area_review_notes}")
+          end
         end
         EnquiryNotifier.new_request(booking)
 

@@ -73,6 +73,12 @@ export default function Booking() {
         </div>
       </div>
 
+      {b.area_review && (
+        <Alert type="warning" title="Service area review needed">
+          This request is outside our normal service area – check whether we can take the job before quoting.
+          <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>{(b.area_review_notes || "").split("\n").filter(Boolean).map((n) => <li key={n}>{n}</li>)}</ul>
+        </Alert>
+      )}
       {pending.map((r) => (
         <Alert key={r.id} type="warning" title={`Customer ${r.kind} request · ${dateTime(r.created_at)}`}>
           {r.details || "No details given."}

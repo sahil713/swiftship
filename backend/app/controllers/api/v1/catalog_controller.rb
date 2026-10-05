@@ -13,7 +13,8 @@ module Api
       def areas
         render json: {
           areas: DeliveryArea.order(:zone, :name),
-          northern_ireland_enabled: Setting.get(:northern_ireland_enabled)
+          rules: PostcodeRule.active.order(:level, :postcode_area),
+          northern_ireland_enabled: false # Ireland, including Northern Ireland, is never served
         }
       end
 

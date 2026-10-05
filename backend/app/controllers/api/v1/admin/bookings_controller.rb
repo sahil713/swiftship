@@ -19,6 +19,7 @@ module Api
           scope = scope.where(service_id: params[:service_id]) if params[:service_id].present?
           scope = scope.where(driver_id: params[:driver_id]) if params[:driver_id].present?
           scope = scope.where(payment_status: params[:payment_status]) if params[:payment_status].present?
+          scope = scope.where(area_review: true) if params[:area_review] == "1"
           scope = scope.where(collection_date: params[:from]..) if params[:from].present?
           scope = scope.where(collection_date: ..params[:to]) if params[:to].present?
           bookings, meta = paginate(scope)

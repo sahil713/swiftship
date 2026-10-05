@@ -29,13 +29,10 @@ export default function Settings() {
     <form className="stack" style={{ maxWidth: 680 }} onSubmit={save}>
       <h1>Settings</h1>
       {!isAdmin && <Alert type="info">Only administrators can change settings.</Alert>}
-      <fieldset className="card stack" disabled={!isAdmin}>
+      <div className="card stack">
         <h3 style={{ margin: 0 }}>Service area</h3>
-        <label className="checkbox">
-          <input type="checkbox" checked={!!form.northern_ireland_enabled} onChange={(e) => setForm({ ...form, northern_ireland_enabled: e.target.checked })} />
-          <span><strong>Serve Northern Ireland (BT postcodes)</strong><br /><span className="small muted">When off, quotes to or from Northern Ireland are refused with a clear message. The Republic of Ireland is never served.</span></span>
-        </label>
-      </fieldset>
+        <p className="small muted" style={{ margin: 0 }}>Ireland – the Republic of Ireland and Northern Ireland – is never served. Areas we don't normally serve are managed under <a href="/admin/pricing">Services &amp; pricing → Service area rules</a>.</p>
+      </div>
       <fieldset className="card stack" disabled={!isAdmin}>
         <h3 style={{ margin: 0 }}>Quote requests</h3>
         <Field label="Email new requests to" htmlFor="st-enq" hint="Every new customer request is emailed here with all its details. Separate several addresses with commas. Leave blank to email all admin users.">

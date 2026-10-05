@@ -45,6 +45,7 @@ Rails.application.routes.draw do
         resources :services, only: %i[index create update destroy]
         resources :delivery_areas, only: %i[index create update destroy]
         resources :surcharges, only: %i[index create update destroy]
+        resources :postcode_rules, only: %i[index create update destroy]
         resources :enquiries, only: %i[index update]
         resources :change_requests, only: :index
         get "settings", to: "settings#show"

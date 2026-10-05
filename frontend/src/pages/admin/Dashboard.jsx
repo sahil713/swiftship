@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { ClipboardList, PoundSterling, Truck, AlertTriangle, Timer, RefreshCcw, MessageSquare, FileQuestion } from "lucide-react";
+import { MapPinned, ClipboardList, PoundSterling, Truck, AlertTriangle, Timer, RefreshCcw, MessageSquare, FileQuestion } from "lucide-react";
 import { useApi } from "../../lib/hooks.js";
 import { date, money, STATUS_LABELS } from "../../lib/format.js";
 import BarChart from "../../components/BarChart.jsx";
@@ -39,6 +39,7 @@ export default function Dashboard() {
         <Kpi icon={Truck} label="Delivered" value={t.delivered} />
         <Kpi icon={Timer} label="On-time rate" value={t.on_time_rate === null ? "—" : `${t.on_time_rate}%`} />
         <Kpi icon={FileQuestion} label="Quotes to price" value={t.quotes_pending} to="/admin/bookings?status=quote_requested" />
+        <Kpi icon={MapPinned} label="Area reviews" value={t.area_review_pending ?? 0} to="/admin/bookings?status=quote_requested&area_review=1" />
         <Kpi icon={AlertTriangle} label="Open exceptions" value={t.exceptions_open} to="/admin/bookings?status=exception" />
         <Kpi icon={RefreshCcw} label="Change requests" value={t.change_requests_pending} to="/admin/change-requests" />
         <Kpi icon={MessageSquare} label="Open enquiries" value={t.enquiries_open} to="/admin/enquiries" />

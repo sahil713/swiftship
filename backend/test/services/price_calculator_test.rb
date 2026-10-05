@@ -32,11 +32,18 @@ class PriceCalculatorTest < ActiveSupport::TestCase
     assert_match(/Jersey/, result.errors.last)
   end
 
-  test "northern ireland can be switched off" do
-    Setting.set(:northern_ireland_enabled, false)
+  test "Northern Ireland is always blocked, whatever the settings say" do
+    Setting.set(:northern_ireland_enabled, true)
     result = PriceCalculator.new(service: Service.first, lookup: false, collection_postcode: "SW1A 2AA", delivery_postcode: "BT1 5GS").call
     refute result.ok
-    assert_match(/Northern Ireland/, result.errors.first)
+    assert_match(/Ireland/, result.errors.first)
+  end
+
+  test "restricted areas are never auto-priced" do
+    result = PriceCalculator.new(service: Service.first, lookup: false, collection_postcode: "SW1A 2AA", delivery_postcode: "TQ1 1AA", weight_kg: 2).call
+    assert result.ok
+    assert result.needs_review
+    assert_match(/normal service area/, result.warnings.join)
   end
 
   test "same day is refused across regions" do

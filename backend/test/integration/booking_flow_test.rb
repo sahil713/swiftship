@@ -159,4 +159,40 @@ class BookingFlowTest < ActionDispatch::IntegrationTest
     assert_response :created
     assert ActionMailer::Base.deliveries.any? { _1.to.include?("admin@swiftship.example") }
   end
+
+  test "phase 1: requests touching restricted areas are accepted and flagged for admin review" do
+    Setting.set(:pricing_enabled, false)
+    ActionMailer::Base.deliveries.clear
+    post "/api/v1/bookings", params: { booking: booking_params(collection_postcode: "BH1 1AA", delivery_postcode: "TR1 2SN") }, as: :json
+    assert_response :created
+    booking = Booking.find_by!(reference: json.dig("booking", "reference"))
+    assert booking.area_review
+    assert_match(/Collection BH1 1AA:/, booking.area_review_notes)
+    assert_match(/Delivery TR1 2SN:/, booking.area_review_notes)
+    assert booking.notes.exists?(["body LIKE ?", "Service area review needed%"])
+
+    mail = ActionMailer::Base.deliveries.last
+    assert_match(/\A\[Area review\]/, mail.subject)
+    assert_includes mail.text_part.decoded, "SERVICE AREA REVIEW NEEDED"
+    assert_includes mail.html_part.decoded, "Service area review needed"
+
+    get "/api/v1/admin/bookings", params: { area_review: "1" }, headers: auth_headers("admin@swiftship.example")
+    assert_includes json["bookings"].map { _1["reference"] }, booking.reference
+  end
+
+  test "phase 1: normal areas are not flagged" do
+    Setting.set(:pricing_enabled, false)
+    post "/api/v1/bookings", params: { booking: booking_params }, as: :json
+    assert_response :created
+    refute Booking.find_by!(reference: json.dig("booking", "reference")).area_review
+  end
+
+  test "phase 1: Ireland is rejected at either end" do
+    Setting.set(:pricing_enabled, false)
+    [{ collection_postcode: "BT1 5GS" }, { delivery_postcode: "D02 X285" }].each do |override|
+      post "/api/v1/bookings", params: { booking: booking_params(override) }, as: :json
+      assert_response :unprocessable_entity
+      assert_match(/Ireland/, json["error"])
+    end
+  end
 end

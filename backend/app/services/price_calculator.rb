@@ -50,6 +50,11 @@ class PriceCalculator
     end
 
     needs_review = false
+    review_notes = ServiceArea.review_notes(collection:, delivery:)
+    if review_notes.any?
+      needs_review = true
+      warnings << "Outside our normal service area – our team will review your request before confirming a price."
+    end
     lines = []
     lines << line("#{@service.name} delivery", @service.base_price_pence)
 

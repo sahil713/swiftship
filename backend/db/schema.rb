@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_10_01_000001) do
+ActiveRecord::Schema[8.0].define(version: 2026_10_05_000001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -83,6 +83,9 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_01_000001) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.text "special_requirements"
+    t.boolean "area_review", default: false, null: false
+    t.text "area_review_notes"
+    t.index ["area_review"], name: "index_bookings_on_area_review"
     t.index ["customer_email"], name: "index_bookings_on_customer_email"
     t.index ["driver_id"], name: "index_bookings_on_driver_id"
     t.index ["reference"], name: "index_bookings_on_reference", unique: true
@@ -156,6 +159,16 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_01_000001) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["booking_id"], name: "index_payments_on_booking_id"
+  end
+
+  create_table "postcode_rules", force: :cascade do |t|
+    t.string "postcode_area", null: false
+    t.string "level", null: false
+    t.string "note"
+    t.boolean "active", default: true, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["postcode_area"], name: "index_postcode_rules_on_postcode_area", unique: true
   end
 
   create_table "proof_of_deliveries", force: :cascade do |t|

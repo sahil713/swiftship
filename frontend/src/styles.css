@@ -177,6 +177,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .field .hint { font-size: 0.8rem; color: var(--text-muted); }
 .field .error-text { font-size: 0.82rem; color: var(--critical); font-weight: 600; }
 .field .ok-text { font-size: 0.82rem; color: var(--good); font-weight: 600; }
+.field .warn-text { font-size: 0.82rem; color: var(--warning); font-weight: 600; }
 .input, .select, .textarea {
   width: 100%; min-height: 46px; padding: 10px 14px; border-radius: var(--radius-sm);
   border: 1px solid var(--border-strong); background: var(--bg-elevated); color: var(--text);
@@ -187,6 +188,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .input:focus, .select:focus, .textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
 .input.invalid { border-color: var(--critical); }
 .input.valid { border-color: var(--good); }
+.input.review { border-color: var(--warning); }
 .checkbox { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; font-size: 0.95rem; }
 .checkbox input { width: 20px; height: 20px; margin-top: 2px; accent-color: var(--accent); flex-shrink: 0; }
 .form-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); }

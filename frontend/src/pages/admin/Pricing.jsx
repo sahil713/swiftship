@@ -9,6 +9,14 @@ import { useAuth } from "../../context/AuthContext.jsx";
 
 // Field specs: [key, label, type, options]. "money" fields are edited in pounds, stored in pence.
 const RESOURCES = {
+  postcode_rules: {
+    label: "Service area rules", singular: "postcode_rule", path: "/admin/postcode_rules",
+    blank: { postcode_area: "", level: "outside", note: "", active: true },
+    fields: [["postcode_area", "Postcode area (letters only, e.g. TQ)"], ["level", "Level", "select", ["outside", "restricted"]], ["note", "Reason shown to staff", "textarea"], ["active", "Rule is active", "checkbox"]],
+    columns: (r) => [<strong key="a" className="mono">{r.postcode_area}</strong>, <Badge key="l" tone={r.level === "outside" ? "serious" : "warning"}>{r.level === "outside" ? "Not normally served" : "Rarely served"}</Badge>, <span key="n" className="small muted">{r.note}</span>, <Badge key="s" tone={r.active ? "good" : "muted"}>{r.active ? "Active" : "Off"}</Badge>],
+    headers: ["Area", "Level", "Reason", "Status"],
+    intro: "Requests touching these postcode areas are still accepted but flagged for review. Every other UK postcode is served normally. Ireland – the Republic and Northern Ireland (BT) – is always blocked and isn't listed here. Scottish postcodes north of Glasgow are also flagged automatically using their exact location.",
+  },
   services: {
     label: "Services", singular: "service", path: "/admin/services",
     blank: { name: "", slug: "", tagline: "", description: "", transit_time: "", base_price_pence: 0, price_per_kg_pence: 0, included_kg: 0, max_weight_kg: "", cutoff_hour: "", restrictions: "", position: 0, active: true },
@@ -77,7 +85,7 @@ function ResourceTable({ kind }) {
   };
 
   const remove = async (r) => {
-    if (!window.confirm(`Delete ${r.name}?`)) return;
+    if (!window.confirm(`Delete ${r.name || r.postcode_area}?`)) return;
     try {
       await api(`${spec.path}/${r.id}`, { method: "DELETE" });
       toast("Deleted");
@@ -101,8 +109,8 @@ function ResourceTable({ kind }) {
                 {spec.columns(r).map((c, i) => <td key={i}>{c}</td>)}
                 {isAdmin && (
                   <td style={{ whiteSpace: "nowrap" }}>
-                    <button className="btn btn-ghost btn-sm" onClick={() => { setError(null); setEditing(toForm(spec, r)); }} aria-label={`Edit ${r.name}`}><Pencil size={14} /></button>
-                    <button className="btn btn-ghost btn-sm" onClick={() => remove(r)} aria-label={`Delete ${r.name}`}><Trash2 size={14} /></button>
+                    <button className="btn btn-ghost btn-sm" onClick={() => { setError(null); setEditing(toForm(spec, r)); }} aria-label={`Edit ${r.name || r.postcode_area}`}><Pencil size={14} /></button>
+                    <button className="btn btn-ghost btn-sm" onClick={() => remove(r)} aria-label={`Delete ${r.name || r.postcode_area}`}><Trash2 size={14} /></button>
                   </td>
                 )}
               </tr>
@@ -110,7 +118,7 @@ function ResourceTable({ kind }) {
           </tbody>
         </table>
       </div>
-      <Modal open={!!editing} onClose={() => setEditing(null)} title={editing?.id ? `Edit ${editing.name}` : `New ${spec.label.toLowerCase().replace(/s$/, "")}`}>
+      <Modal open={!!editing} onClose={() => setEditing(null)} title={editing?.id ? `Edit ${editing.name || editing.postcode_area}` : `New ${spec.label.toLowerCase().replace(/s$/, "")}`}>
         {editing && (
           <form className="stack" onSubmit={save}>
             {error && <Alert type="error">{error}</Alert>}
@@ -123,7 +131,7 @@ function ResourceTable({ kind }) {
                   <Field key={k} label={label} htmlFor={id} className={type === "textarea" || type === "list" ? "span-all" : ""}>
                     {type === "textarea" ? <textarea id={id} className="textarea" rows={3} value={editing[k]} onChange={onChange} />
                       : type === "select" ? <select id={id} className="select" value={editing[k]} onChange={onChange}>{options.map((o) => <option key={o} value={o}>{humanize(o)}</option>)}</select>
-                      : <input id={id} className="input" type={type === "money" || type === "number" ? "number" : "text"} step={type === "money" ? "0.01" : "any"} value={editing[k]} onChange={onChange} required={k === "name"} />}
+                      : <input id={id} className="input" type={type === "money" || type === "number" ? "number" : "text"} step={type === "money" ? "0.01" : "any"} value={editing[k]} onChange={onChange} required={k === "name" || k === "postcode_area"} />}
                   </Field>
                 );
               })}
@@ -138,6 +146,7 @@ function ResourceTable({ kind }) {
 
 export default function Pricing() {
   const [tab, setTab] = useState("services");
+  const intro = RESOURCES[tab].intro;
   return (
     <div className="stack">
       <div>
@@ -145,6 +154,7 @@ export default function Pricing() {
         <p className="muted" style={{ margin: 0 }}>Changes apply to new quotes immediately. Existing confirmed prices aren't affected.</p>
       </div>
       <Tabs label="Pricing configuration" value={tab} onChange={setTab} tabs={Object.entries(RESOURCES).map(([v, r]) => ({ value: v, label: r.label }))} />
+      {intro && <Alert type="info">{intro}</Alert>}
       <ResourceTable key={tab} kind={tab} />
     </div>
   );

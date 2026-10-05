@@ -1,4 +1,5 @@
-# Idempotent seed data: UK regions, services, surcharges, demo users and bookings.
+# Idempotent seed data: UK regions, service-area rules, services, surcharges, demo users and bookings.
+# Seeds run on every production boot, so existing records are never overwritten – admin edits stick.
 
 regions = [
   ["London", "mainland", %w[E EC N NW SE SW W WC], 0, 0],
@@ -16,14 +17,36 @@ regions = [
 ]
 
 regions.each do |name, zone, areas, surcharge, extra_days|
-  area = DeliveryArea.find_or_initialize_by(name:)
-  area.update!(zone:, postcode_areas: areas, surcharge_pence: surcharge, extra_transit_days: extra_days,
-               serviced: zone != "excluded",
-               notes: case zone
-                      when "remote" then "Remote area – allow extra transit time. Some islands are served by ferry."
-                      when "northern_ireland" then "Served via ferry crossing. Can be switched off in admin settings."
-                      when "excluded" then "Crown Dependencies are outside the UK and not currently served."
-                      end)
+  DeliveryArea.find_or_create_by!(name:) do |area|
+    area.assign_attributes(zone:, postcode_areas: areas, surcharge_pence: surcharge, extra_transit_days: extra_days,
+                           serviced: !%w[excluded northern_ireland].include?(zone),
+                           notes: case zone
+                                  when "remote" then "Remote area – allow extra transit time. Some islands are served by ferry."
+                                  when "northern_ireland" then "We don't provide services to or from Ireland – this includes the Republic of Ireland and Northern Ireland."
+                                  when "excluded" then "Crown Dependencies are outside the UK and not currently served."
+                                  end)
+  end
+end
+
+# Exceptions to the normal UK service area. Requests touching these areas are accepted
+# but flagged for admin review. Anything not listed is served normally.
+# Ireland (Eircodes and Northern Ireland's BT area) is always blocked in code, not here.
+[
+  ["IV", "outside", "Scottish Highlands (Inverness) – north of Glasgow, not normally served"],
+  ["AB", "outside", "Aberdeen & Aberdeenshire – north of Glasgow, not normally served"],
+  ["KW", "outside", "Caithness & Orkney – north of Glasgow, not normally served"],
+  ["HS", "outside", "Outer Hebrides – north of Glasgow, not normally served"],
+  ["ZE", "outside", "Shetland – north of Glasgow, not normally served"],
+  ["PH", "outside", "Perth & Highland Perthshire – north of Glasgow, not normally served"],
+  ["DD", "outside", "Dundee & Angus – north of Glasgow, not normally served"],
+  ["TQ", "outside", "Torquay & South Devon – beyond the EX area, not normally served"],
+  ["TR", "outside", "Cornwall (Truro) – beyond the EX area, not normally served"],
+  ["SY", "outside", "Shrewsbury & mid-Wales – not normally served; occasional exceptions depending on location/job"],
+  ["TN", "restricted", "Tonbridge, Tunbridge Wells & the Kent Weald – very rarely served, case by case"],
+  ["BH", "restricted", "Bournemouth & Poole – very rarely served, case by case"],
+  ["SO", "restricted", "Southampton – very rarely served, case by case"]
+].each do |postcode_area, level, note|
+  PostcodeRule.find_or_create_by!(postcode_area:) { |rule| rule.assign_attributes(level:, note:) }
 end
 
 services = [
@@ -46,8 +69,7 @@ services = [
 ]
 
 services.each do |attrs|
-  service = Service.find_or_initialize_by(slug: attrs[:slug])
-  service.update!(attrs)
+  Service.find_or_create_by!(slug: attrs[:slug]) { |service| service.assign_attributes(attrs) }
 end
 
 surcharges = [
@@ -62,8 +84,7 @@ surcharges = [
 ]
 
 surcharges.each do |attrs|
-  surcharge = Surcharge.find_or_initialize_by(code: attrs[:code])
-  surcharge.update!(attrs)
+  Surcharge.find_or_create_by!(code: attrs[:code]) { |surcharge| surcharge.assign_attributes(attrs) }
 end
 
 Setting::DEFAULTS.each_key { |key| Setting.find_or_create_by!(key:) { _1.value = Setting::DEFAULTS[key] } }

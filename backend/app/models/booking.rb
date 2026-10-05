@@ -82,6 +82,13 @@ class Booking < ApplicationRecord
 
   def price_pence = confirmed_price_pence || estimated_price_pence
 
+  # Flags the request for admin review when either end is outside the normal service area.
+  def apply_area_review(collection:, delivery:)
+    notes = ServiceArea.review_notes(collection:, delivery:)
+    self.area_review = notes.any?
+    self.area_review_notes = notes.join("\n").presence
+  end
+
   def payable? = status == "awaiting_payment" && payment_status == "unpaid" && confirmed_price_pence.present?
 
   def cancellable_by_customer? = %w[quote_requested awaiting_payment booked].include?(status)
@@ -131,7 +138,7 @@ class Booking < ApplicationRecord
       collection_city:, collection_postcode:, delivery_city:, delivery_postcode:,
       item_description:, quantity:, price_pence:, confirmed_price_pence:, estimated_price_pence:,
       collection_date:, estimated_delivery_date:, created_at:, updated_at:,
-      customer_email:, driver: driver&.slice(:id, :name)
+      customer_email:, driver: driver&.slice(:id, :name), area_review:
     }
   end
 
@@ -152,7 +159,7 @@ class Booking < ApplicationRecord
     )
     if staff
       data.merge!(
-        id:, user: user&.as_json, notes: notes.includes(:user).map(&:as_json),
+        id:, user: user&.as_json, notes: notes.includes(:user).map(&:as_json), area_review_notes:,
         notifications: notifications.limit(50).map(&:as_json),
         allowed_transitions: TRANSITIONS.fetch(status, []), paid_pence:
       )

@@ -7,7 +7,7 @@ class AdminMailer < ApplicationMailer
     mail(
       to:,
       reply_to: booking.customer_email,
-      subject: "New quote request #{booking.reference} – #{booking.collection_postcode} → #{booking.delivery_postcode}"
+      subject: "#{booking.area_review ? '[Area review] ' : ''}New quote request #{booking.reference} – #{booking.collection_postcode} → #{booking.delivery_postcode}"
     ) do |format|
       format.text
       format.html

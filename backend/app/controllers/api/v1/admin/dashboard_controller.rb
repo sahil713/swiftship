@@ -26,6 +26,7 @@ module Api
               on_time_rate: delivered.count.zero? ? nil : (on_time * 100.0 / delivered.count).round(1),
               exceptions_open: Booking.where(status: %w[exception failed_delivery]).count,
               quotes_pending: Booking.where(status: "quote_requested").count,
+              area_review_pending: Booking.where(area_review: true, status: "quote_requested").count,
               change_requests_pending: ChangeRequest.pending.count,
               enquiries_open: Enquiry.where(status: %w[open in_progress]).count
             },
