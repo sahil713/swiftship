@@ -10,8 +10,8 @@ import { TASK_TONE } from "./Drivers.jsx";
 
 const STATUS_OPTIONS = [
   ["open", "All open tasks"], ["unassigned", "Unassigned"], ["assigned", "Assigned"], ["started", "In progress / out for delivery"],
-  ["arrived", "Arrived at collection / delivery"], ["collected", "Collected"], ["arrived_delivery", "Arrived at delivery (direct)"],
-  ["closed", "At depot"], ["completed", "Completed"], ["all", "Everything"],
+  ["arrived", "Arrived at collection"], ["collected", "In transit"], ["at_depot", "At depot"], ["arrived_delivery", "Arrived at delivery"],
+  ["delivered", "Delivery completed"], ["closed", "Task closed"], ["all", "Everything"],
 ];
 
 /** Every collection and delivery task, with assign / reassign / unassign controls. */
@@ -58,12 +58,12 @@ export default function Tasks() {
               <thead><tr><th>Job</th><th>Task</th><th>Where</th><th>Driver</th><th>Status</th><th>Proof</th><th>Time taken</th><th><span className="sr-only">Actions</span></th></tr></thead>
               <tbody>
                 {data.tasks.map((t) => {
-                  const editable = ["unassigned", "assigned", "started", "arrived", "collected", "arrived_delivery"].includes(t.status);
+                  const editable = ["unassigned", "assigned", "started", "arrived", "collected", "at_depot", "arrived_delivery", "delivered"].includes(t.status);
                   const proofKinds = Object.keys(t.proofs || {});
                   return (
                     <tr key={t.id}>
                       <td><Link to={`/admin/bookings/${t.reference}`} className="mono">{t.reference}</Link></td>
-                      <td>{TASK_KIND_LABELS[t.kind]}<div className="small muted">{t.item}</div></td>
+                      <td><Link to={`/admin/tasks/${t.id}`}><strong>{TASK_KIND_LABELS[t.kind]}</strong> #{t.id}</Link><div className="small muted">{t.item}</div></td>
                       <td>{t.contact_name}<div className="small muted">{t.city} <span className="mono">{t.postcode}</span></div></td>
                       <td>
                         {editable ? (

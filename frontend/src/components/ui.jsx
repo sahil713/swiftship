@@ -24,8 +24,13 @@ const ALERT_ICONS = { info: Info, warning: AlertTriangle, error: AlertCircle, su
 
 export function Alert({ type = "info", children, title }) {
   const Icon = ALERT_ICONS[type];
+  const ref = useRef(null);
+  // Errors scroll into view so they're never hidden (e.g. at the top of a long pop-up form).
+  useEffect(() => {
+    if (type === "error") ref.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [type, children]);
   return (
-    <div className={`alert alert-${type}`} role={type === "error" ? "alert" : undefined}>
+    <div ref={ref} className={`alert alert-${type}`} role={type === "error" ? "alert" : undefined}>
       <Icon size={18} aria-hidden />
       <div>
         {title && <strong style={{ display: "block" }}>{title}</strong>}
@@ -85,7 +90,8 @@ export function Modal({ open, onClose, title, children }) {
   }, [open]);
   if (!open) return null;
   return (
-    <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    // Clicking outside doesn't close the pop-up, so a stray click can't throw away what's been typed.
+    <div className="modal-backdrop">
       <motion.div ref={ref} className="modal" role="dialog" aria-modal="true" aria-label={title} initial={{ opacity: 0, y: 16, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }}>
         <div className="row-between" style={{ marginBottom: 16 }}>
           <h3 style={{ margin: 0 }}>{title}</h3>

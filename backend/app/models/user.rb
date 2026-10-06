@@ -17,6 +17,8 @@ class User < ApplicationRecord
   has_many :assigned_bookings, class_name: "Booking", foreign_key: :driver_id, dependent: :nullify
 
   has_many :driver_tasks, foreign_key: :driver_id, dependent: :restrict_with_error
+  has_many :driver_documents, dependent: :restrict_with_error
+  has_many :audit_logs, as: :auditable, dependent: :restrict_with_exception
 
   normalizes :email, with: ->(email) { email.strip.downcase.presence }
   normalizes :username, with: ->(name) { name.strip.downcase.presence }
@@ -32,7 +34,7 @@ class User < ApplicationRecord
   # Driver profile. Licence and gearbox are required for new drivers; older accounts may lack them.
   validates :first_name, :last_name, presence: true, if: :driver?
   validates :phone, presence: true, if: -> { driver? && new_record? }
-  validates :licence_number, :transmission, presence: true, if: -> { driver? && new_record? }
+  validates :licence_number, :transmission, :email, :username, presence: true, if: -> { driver? && new_record? }
   validates :transmission, inclusion: { in: TRANSMISSIONS }, allow_blank: true
   validates :visa_status, inclusion: { in: VISA_STATUSES }, allow_blank: true
   validates :bank_sort_code, format: { with: /\A\d{2}-?\d{2}-?\d{2}\z/, message: "must be 6 digits, e.g. 12-34-56" }, allow_blank: true

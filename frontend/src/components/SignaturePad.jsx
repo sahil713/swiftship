@@ -25,6 +25,19 @@ const SignaturePad = forwardRef(function SignaturePad({ onChange }, ref) {
 
   useEffect(() => {
     setup();
+    // Cancel the browser's own touch handling on the pad: a quick stroke must never be treated as a
+    // scroll/fling, or the browser ignores the next tap (e.g. the Save button straight after signing).
+    const canvas = canvasRef.current;
+    const stop = (e) => e.cancelable && e.preventDefault();
+    const opts = { passive: false };
+    canvas.addEventListener("touchstart", stop, opts);
+    canvas.addEventListener("touchmove", stop, opts);
+    canvas.addEventListener("touchend", stop, opts);
+    return () => {
+      canvas.removeEventListener("touchstart", stop, opts);
+      canvas.removeEventListener("touchmove", stop, opts);
+      canvas.removeEventListener("touchend", stop, opts);
+    };
   }, []);
 
   useImperativeHandle(ref, () => ({

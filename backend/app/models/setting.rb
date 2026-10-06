@@ -4,6 +4,8 @@ class Setting < ApplicationRecord
     "auto_confirm_quotes" => true,
     # Phase 1: no online pricing – customers submit an enquiry and staff quote by phone.
     "pricing_enabled" => false,
+    # Drivers must capture a signature with the proof of collection.
+    "require_collection_signature" => true,
     # Where new enquiries are emailed. Blank = every active admin user.
     "enquiry_notification_email" => "",
     "support_email" => "help@shiftlogistics.example",

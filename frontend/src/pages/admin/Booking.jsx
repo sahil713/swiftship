@@ -141,6 +141,18 @@ export default function Booking() {
             <EventTimeline events={b.events} showBy />
           </div>
 
+          {b.change_history?.length > 0 && (
+            <div className="card">
+              <h3>Change history</h3>
+              {b.change_history.map((c) => (
+                <div key={c.id} className="small" style={{ borderTop: "1px dashed var(--border)", padding: "8px 0" }}>
+                  <div className="muted">{dateTime(c.at)} · {c.by || "System"}{c.reason ? ` · ${c.reason}` : ""}</div>
+                  {Object.entries(c.changes).map(([f, [o, n]]) => <div key={f}><strong>{humanize(f)}</strong>: <span className="muted">{o || "—"}</span> → {n || "—"}</div>)}
+                </div>
+              ))}
+            </div>
+          )}
+
           <div className="card stack">
             <h3 style={{ margin: 0 }}><StickyNote size={18} style={{ display: "inline", verticalAlign: -3 }} /> Notes & issues</h3>
             <form className="stack" onSubmit={async (e) => { e.preventDefault(); if (await act("/add_note", note, "Note added")) setNote({ kind: "internal", body: "" }); }}>
@@ -287,7 +299,7 @@ function EditForm({ booking, onSave, busy }) {
   );
 }
 
-const TASK_TONE = { unassigned: "critical", assigned: "warning", started: "accent", arrived: "accent", collected: "info", arrived_delivery: "accent", closed: "good", completed: "good", cancelled: "muted" };
+const TASK_TONE = { unassigned: "critical", assigned: "warning", started: "accent", arrived: "accent", collected: "info", at_depot: "info", arrived_delivery: "accent", delivered: "good", closed: "good", completed: "good", cancelled: "muted" };
 
 /** The job's driver tasks: assignment, step log with timings, and the drivers' proofs. */
 function DriverTasks({ booking: b, drivers, act, busy }) {
@@ -318,7 +330,7 @@ function DriverTasks({ booking: b, drivers, act, busy }) {
           <p className="small muted" style={{ margin: 0 }}>Choose how this job runs:</p>
           <div className="form-grid">
             {assignSelect("collection", "Collection via depot")}
-            {assignSelect("direct", "Direct collect & deliver")}
+            {assignSelect("direct", "Collection + Delivery (direct)")}
           </div>
           <p className="small muted" style={{ margin: 0 }}>Via depot: the driver drops the items at the depot and a separate delivery task follows. Direct: one task from collection straight to delivery.</p>
         </div>
@@ -326,12 +338,12 @@ function DriverTasks({ booking: b, drivers, act, busy }) {
       {tasks.map((t) => (
         <div key={t.id} className="stack" style={{ borderTop: "1px solid var(--border)", paddingTop: 14 }}>
           <div className="row-between">
-            <strong>{TASK_KIND_LABELS[t.kind]} task</strong>
+            <Link to={`/admin/tasks/${t.id}`}><strong>{TASK_KIND_LABELS[t.kind]} task #{t.id}</strong> – open task details</Link>
             <Badge tone={TASK_TONE[t.status]}>{t.status_label}</Badge>
           </div>
           <div className="row" style={{ gap: 8 }}>
             <label className="small muted" htmlFor={`drv-${t.id}`}>Driver</label>
-            <select id={`drv-${t.id}`} className="select" style={{ maxWidth: 240, minHeight: 38 }} value={t.driver?.id || ""} disabled={busy || !["unassigned", "assigned", "started", "arrived", "collected", "arrived_delivery"].includes(t.status)}
+            <select id={`drv-${t.id}`} className="select" style={{ maxWidth: 240, minHeight: 38 }} value={t.driver?.id || ""} disabled={busy || !["unassigned", "assigned", "started", "arrived", "collected", "at_depot", "arrived_delivery", "delivered"].includes(t.status)}
               onChange={(e) => e.target.value && act("/assign_task", { kind: t.kind, driver_id: e.target.value }, t.driver ? "Task reassigned" : "Task assigned")}>
               {!t.driver && <option value="">Choose driver…</option>}
               {t.driver && !drivers.some((d) => d.id === t.driver.id) && <option value={t.driver.id}>{t.driver.name}</option>}

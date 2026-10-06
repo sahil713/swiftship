@@ -48,7 +48,8 @@ class Booking < ApplicationRecord
   has_many :change_requests, -> { order(created_at: :desc) }, dependent: :destroy
   has_many :notifications, -> { order(created_at: :desc) }, dependent: :destroy
   has_one :proof_of_delivery, dependent: :destroy # legacy single POD, kept for older jobs
-  has_many :driver_tasks, -> { order(:created_at, :id) }, dependent: :destroy
+  has_many :driver_tasks, -> { order(:created_at, :id) }, dependent: :restrict_with_exception
+  has_many :audit_logs, as: :auditable, dependent: :restrict_with_exception
 
   %i[collection_postcode delivery_postcode].each do |attr|
     normalizes attr, with: ->(pc) { UkPostcode.format(pc) || pc.to_s.upcase.strip }
@@ -181,7 +182,8 @@ class Booking < ApplicationRecord
       data.merge!(
         id:, user: user&.as_json, notes: notes.includes(:user).map(&:as_json), area_review_notes:,
         notifications: notifications.limit(50).map(&:as_json),
-        allowed_transitions: TRANSITIONS.fetch(status, []), paid_pence:
+        allowed_transitions: TRANSITIONS.fetch(status, []), paid_pence:,
+        change_history: audit_logs.includes(:user).newest_first.limit(50).map(&:as_json)
       )
     end
     data

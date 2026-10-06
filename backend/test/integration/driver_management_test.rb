@@ -9,7 +9,7 @@ class DriverManagementTest < ActionDispatch::IntegrationTest
   end
 
   def create_driver(attrs = {})
-    post "/api/v1/admin/drivers", params: { driver: { first_name: "Nina", last_name: "Driver", phone: "07700 900888", username: "nina", password: "drive-safe-1",
+    post "/api/v1/admin/drivers", params: { driver: { first_name: "Nina", last_name: "Driver", phone: "07700 900888", username: "nina", password: "drive-safe-1", email: "nina.#{attrs[:username] || 'nina'}@example.com",
                                                        licence_number: "DRIVE123456AB9CD", transmission: "automatic" }.merge(attrs) }, headers: @admin, as: :json
     json
   end
@@ -24,7 +24,6 @@ class DriverManagementTest < ActionDispatch::IntegrationTest
     driver = create_driver
     assert_response :created
     assert_equal "nina", driver["username"]
-    assert_nil driver["email"]
 
     post "/api/v1/auth/login", params: { email: "NINA", password: "drive-safe-1" }, as: :json
     assert_response :success
@@ -88,7 +87,8 @@ class DriverManagementTest < ActionDispatch::IntegrationTest
     task = job.reload.collection_task
     task.start!(user: nina)
     task.arrive!(user: nina)
-    task.record_collection!(user: nina, person_name: "Sender", occurred_at: Time.current, photos: [PHOTO])
+    task.save_collection_proof!(user: nina, person_name: "Sender", occurred_at: Time.current, photos: [PHOTO], signature_data: "data:image/png;base64,iVBORw0KGgo=")
+    task.complete_collection!(user: nina)
 
     patch "/api/v1/admin/drivers/#{driver['id']}", params: { driver: { active: false } }, headers: @admin, as: :json
     assert_response :unprocessable_entity
@@ -121,7 +121,7 @@ class DriverManagementTest < ActionDispatch::IntegrationTest
 
     post "/api/v1/admin/tasks/#{task.id}/assign", params: { driver_id: priya.id }, headers: @admin, as: :json
     assert_equal "Priya Patel", json.dig("driver", "name")
-    assert_equal "Assigned", json["status_label"]
+    assert_equal "Task Assigned", json["status_label"]
 
     post "/api/v1/admin/tasks/#{task.id}/unassign", headers: @admin, as: :json
     assert_equal "Unassigned", json["status_label"]
@@ -135,26 +135,31 @@ class DriverManagementTest < ActionDispatch::IntegrationTest
     post "/api/v1/admin/tasks/#{task.id}/assign", params: { driver_id: dan.id }, headers: @admin, as: :json
     dan_headers = auth_headers(dan.email)
     post "/api/v1/driver/tasks/#{task.id}/start", headers: dan_headers, as: :json
-    assert_equal "In Progress", json["status_label"]
+    assert_equal "Task Started", json["status_label"]
     post "/api/v1/driver/tasks/#{task.id}/arrive", headers: dan_headers, as: :json
-    post "/api/v1/driver/tasks/#{task.id}/collect", params: { person_name: "Sender", photos: [PHOTO] }, headers: dan_headers, as: :json
-    assert_equal "Collected", json["status_label"]
+    post "/api/v1/driver/tasks/#{task.id}/collect", params: { person_name: "Sender", photos: [PHOTO], signature_data: "data:image/png;base64,iVBORw0KGgo=" }, headers: dan_headers, as: :json
+    post "/api/v1/driver/tasks/#{task.id}/complete_collection", headers: dan_headers, as: :json
+    assert_equal "In Transit", json["status_label"]
     post "/api/v1/admin/tasks/#{task.id}/unassign", headers: @admin, as: :json
     assert_response :unprocessable_entity, "can't unassign once the driver has the items"
-    post "/api/v1/driver/tasks/#{task.id}/close", params: { person_name: "Depot", photos: [PHOTO], signature_data: "data:image/png;base64,iVBORw0KGgo=" }, headers: dan_headers, as: :json
+    post "/api/v1/driver/tasks/#{task.id}/depot", params: { person_name: "Depot", location: "Main depot", photos: [PHOTO], signature_data: "data:image/png;base64,iVBORw0KGgo=" }, headers: dan_headers, as: :json
     assert_equal "At Depot", json["status_label"]
+    post "/api/v1/driver/tasks/#{task.id}/close", headers: dan_headers, as: :json
+    assert_equal "Task Closed", json["status_label"]
 
     delivery = job.reload.delivery_task
     post "/api/v1/driver/tasks/#{delivery.id}/start", headers: dan_headers, as: :json
-    assert_equal "Out for Delivery", json["status_label"]
+    assert_equal "Task Started", json["status_label"]
     post "/api/v1/driver/tasks/#{delivery.id}/arrive", headers: dan_headers, as: :json
     post "/api/v1/driver/tasks/#{delivery.id}/proof", params: { person_name: "Recv", photos: [PHOTO, PHOTO], signature_data: "data:image/png;base64,iVBORw0KGgo=" }, headers: dan_headers, as: :json
     post "/api/v1/driver/tasks/#{delivery.id}/complete", headers: dan_headers, as: :json
-    assert_equal "Completed", json["status_label"]
+    assert_equal "Delivery Completed", json["status_label"]
+    post "/api/v1/driver/tasks/#{delivery.id}/close", headers: dan_headers, as: :json
+    assert_equal "Task Closed", json["status_label"]
 
     get "/api/v1/admin/drivers/#{dan.id}", headers: @admin
     statuses = json["tasks"].select { _1["reference"] == job.reference }.map { _1["status_label"] }
-    assert_equal ["Completed", "At Depot"], statuses
+    assert_equal ["Task Closed", "Task Closed"], statuses
   end
 
   test "driver profile: required details, encrypted sensitive fields, admin-only visibility" do
@@ -181,5 +186,52 @@ class DriverManagementTest < ActionDispatch::IntegrationTest
                                                        licence_number: "X1", transmission: "manual", bank_sort_code: "12345" } }, headers: @admin, as: :json
     assert_response :unprocessable_entity
     assert_match(/sort code/i, json["error"])
+  end
+
+  test "new drivers need email and username; profile edits are audited without exposing secrets" do
+    post "/api/v1/admin/drivers", params: { driver: { first_name: "No", last_name: "Email", phone: "07700 900111", username: "noemail", password: "password99", licence_number: "X1", transmission: "manual" } }, headers: @admin, as: :json
+    assert_response :unprocessable_entity
+    assert_match(/Email/, json["error"])
+
+    driver = create_driver(username: "audited1", bank_account_number: "12345678")
+    patch "/api/v1/admin/drivers/#{driver['id']}", params: { driver: { phone: "07700 999999", bank_account_number: "87654321", password: "new-password-9" } }, headers: @admin, as: :json
+    assert_response :success
+    get "/api/v1/admin/drivers/#{driver['id']}", headers: @admin
+    change = json["history"].first
+    assert_equal ["07700 900888", "07700 999999"], change["changes"]["phone"]
+    assert_equal ["••••5678", "••••4321"], change["changes"]["bank_account_number"]
+    assert_equal ["(hidden)", "password reset"], change["changes"]["password_digest"]
+    refute_includes change.to_json, "87654321"
+  end
+
+  test "driver documents: admin-only upload, private download, replacement keeps history" do
+    driver = create_driver(username: "docs1")
+    pdf = Rack::Test::UploadedFile.new(StringIO.new("%PDF-1.4 licence"), "application/pdf", original_filename: "licence.pdf")
+    post "/api/v1/admin/drivers/#{driver['id']}/documents", params: { doc_type: "licence", file: pdf, expires_on: "2030-01-01" }, headers: @admin
+    assert_response :created, response.body
+    first_id = json["id"]
+    refute json.key?("data"), "file contents are never in JSON"
+
+    fake = Rack::Test::UploadedFile.new(StringIO.new("<script>alert(1)</script>"), "image/png", original_filename: "evil.png")
+    post "/api/v1/admin/drivers/#{driver['id']}/documents", params: { doc_type: "passport", file: fake }, headers: @admin
+    assert_response :unprocessable_entity, "file type is checked from the content, not the name"
+
+    png = Rack::Test::UploadedFile.new(StringIO.new("\x89PNG\r\n\x1A\n rest".b), "image/png", original_filename: "licence-new.png")
+    post "/api/v1/admin/drivers/#{driver['id']}/documents", params: { doc_type: "licence", file: png }, headers: @admin
+    assert_response :created
+    get "/api/v1/admin/drivers/#{driver['id']}/documents", headers: @admin
+    licence = json.select { _1["doc_type"] == "licence" }
+    assert_equal 2, licence.size
+    assert_equal 1, licence.count { _1["replaced_at"].nil? }, "only the newest licence is current"
+
+    get "/api/v1/admin/drivers/#{driver['id']}/documents/#{first_id}/file", headers: @admin
+    assert_response :success
+    assert_equal "%PDF-1.4 licence", response.body
+    assert_includes response.headers["Cache-Control"], "no-store"
+
+    get "/api/v1/admin/drivers/#{driver['id']}/documents/#{first_id}/file", headers: auth_headers("ops@swiftship.example")
+    assert_response :forbidden, "operations staff can't open driver documents"
+    get "/api/v1/admin/drivers/#{driver['id']}/documents/#{first_id}/file"
+    assert_response :unauthorized
   end
 end

@@ -4,6 +4,7 @@ module Api
       # Every driver task across all jobs, with assignment controls.
       class TasksController < BaseController
         before_action :load_task, except: :index
+        before_action :admin_only!, only: :correct_proof
         rescue_from DriverTask::InvalidStep, with: ->(e) { render json: { error: e.message }, status: :unprocessable_entity }
 
         def index
@@ -21,6 +22,30 @@ module Api
           end
           tasks, meta = paginate(scope)
           render json: { tasks: tasks.map { task_json(_1) }, meta:, drivers: User.drivers.order(:name).map { _1.slice(:id, :name) } }
+        end
+
+        # Everything about one task in one place: job, customer, both stops, proofs, timeline, timings, corrections.
+        def show
+          b = @task.booking
+          stop = ->(s) { { contact_name: b["#{s}_contact_name"], phone: b["#{s}_phone"], email: b["#{s}_email"], address: b.public_send("#{s}_address"), instructions: b["#{s}_instructions"] } }
+          audits = AuditLog.where(auditable: @task).or(AuditLog.where(auditable: @task.proofs)).includes(:user, :auditable).newest_first
+          render json: @task.as_json.merge(
+            booking: {
+              reference: b.reference, status: b.status, status_label: Booking.status_label(b.status), service: b.service.name,
+              customer: { name: b.user&.name || b.collection_contact_name, email: b.customer_email, phone: b.collection_phone },
+              collection: stop.call("collection"), delivery: stop.call("delivery"), collection_date: b.collection_date,
+              item: "#{b.quantity} × #{b.item_description}", special_requirements: b.special_requirements
+            },
+            corrections: audits.map { |a| a.as_json.merge(record: a.auditable_type == "TaskProof" ? a.auditable.kind : "task") },
+            drivers: User.drivers.order(:name).map { _1.slice(:id, :name) }
+          )
+        end
+
+        # Admin correction of a recorded proof. Requires a reason; the original values are kept.
+        def correct_proof
+          attrs = params.permit(:person_name, :occurred_at, :notes, :location).to_h.symbolize_keys.compact_blank
+          @task.correct_proof!(params[:proof_kind], by: current_user, reason: params[:reason], **attrs)
+          show
         end
 
         def assign

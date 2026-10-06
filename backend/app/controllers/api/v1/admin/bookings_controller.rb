@@ -29,8 +29,12 @@ module Api
         def show = render_booking
 
         def update
-          @booking.update!(params.require(:booking).permit(*EDITABLE))
-          @booking.notes.create!(user: current_user, body: "Booking details edited", kind: "internal")
+          @booking.assign_attributes(params.require(:booking).permit(*EDITABLE))
+          changes = @booking.changes_to_save.except("updated_at").transform_values { |(old, new)| [old&.to_s, new&.to_s] }
+          @booking.save!
+          AuditLog.record!(@booking, user: current_user, action: "booking_edited", changes:, reason: params[:reason])
+          @booking.notes.create!(user: current_user, kind: "internal",
+                                 body: "Booking details edited: #{changes.map { |f, (o, n)| "#{f.humanize} #{o.presence || '—'} → #{n.presence || '—'}" }.join('; ')}") if changes.any?
           render_booking
         end
 

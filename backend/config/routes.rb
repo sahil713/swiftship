@@ -47,11 +47,16 @@ Rails.application.routes.draw do
         resources :delivery_areas, only: %i[index create update destroy]
         resources :surcharges, only: %i[index create update destroy]
         resources :postcode_rules, only: %i[index create update destroy]
-        resources :drivers, only: %i[index show create update destroy]
-        resources :tasks, only: :index do
+        resources :drivers, only: %i[index show create update destroy] do
+          resources :documents, only: %i[index create destroy], controller: "driver_documents" do
+            get :file, on: :member
+          end
+        end
+        resources :tasks, only: %i[index show] do
           member do
             post :assign
             post :unassign
+            post "proofs/:proof_kind/correct", action: :correct_proof
           end
         end
         resources :enquiries, only: %i[index update] do
@@ -65,13 +70,15 @@ Rails.application.routes.draw do
       namespace :driver do
         resources :tasks, only: %i[index show] do
           member do
-            post :arrive
-            post :collect
-            post :arrive_delivery
-            post :close
             post :start
-            post :proof
-            post :complete
+            post :arrive
+            post :collect               # save / correct proof of collection
+            post :complete_collection
+            post :depot                 # save / correct depot drop-off record
+            post :arrive_delivery
+            post :proof                 # save / correct proof of delivery
+            post :complete              # delivery completed
+            post :close                 # close task (checks everything is recorded)
             post :report_issue
           end
         end

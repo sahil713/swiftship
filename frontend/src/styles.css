@@ -98,7 +98,9 @@
    Base
    ========================================================================== */
 *, *::before, *::after { box-sizing: border-box; }
-html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+/* touch-action: manipulation – no double-tap-to-zoom gesture, so a quick tap (e.g. Save straight after signing) is never swallowed. */
+html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; touch-action: manipulation; }
+button, a, input, select, textarea, label { touch-action: manipulation; }
 body {
   margin: 0;
   font-family: var(--font);
@@ -537,7 +539,7 @@ main { flex: 1; }
 .proof-gallery img { width: 100%; height: 100%; object-fit: cover; }
 .task-kind.direct { background: var(--good-soft); color: var(--good); }
 .event-timeline { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
-.event-timeline li { display: grid; grid-template-columns: 92px 1fr; gap: 10px; padding: 8px 0; border-top: 1px dashed var(--border); font-size: 0.88rem; }
+.event-timeline li { display: grid; grid-template-columns: 118px 1fr; gap: 10px; padding: 8px 0; border-top: 1px dashed var(--border); font-size: 0.88rem; }
 .event-timeline li:first-child { border-top: 0; }
 .event-timeline .gap { color: var(--text-muted); font-size: 0.78rem; }
 .timing-chips { display: flex; flex-wrap: wrap; gap: 6px; }

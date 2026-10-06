@@ -99,7 +99,7 @@ end
 def seed_user(email, name, role, phone, password)
   User.find_by(email:) || User.create!(
     email:, name:, role:, phone:, password:, first_name: name.split.first, last_name: name.split[1..].join(" "),
-    **(role == "driver" ? { licence_number: "DEMO#{rand(10**6)}", transmission: "manual" } : {})
+    **(role == "driver" ? { licence_number: "DEMO#{rand(10**6)}", transmission: "manual", username: email.split("@").first } : {})
   )
 end
 
@@ -173,9 +173,11 @@ if Booking.none?
       task = booking.driver_tasks.create!(kind: "collection", driver:)
       task.start!(user: driver)
       task.arrive!(user: driver)
-      task.record_collection!(user: driver, person_name: "Casey Customer", occurred_at: Time.current, photos: [demo_png])
-      task.close_at_depot!(user: driver, note: "Bay 2", person_name: "Depot team", occurred_at: Time.current,
-                           photos: [demo_png], signature_data: demo_png)
+      task.save_collection_proof!(user: driver, person_name: "Casey Customer", occurred_at: Time.current, photos: [demo_png], signature_data: demo_png)
+      task.complete_collection!(user: driver)
+      task.save_depot_proof!(user: driver, person_name: "Depot team", occurred_at: Time.current, location: "Main depot – Bay 2",
+                             photos: [demo_png], signature_data: demo_png)
+      task.close!(user: driver)
     end
     booking.sync_driver!
   end

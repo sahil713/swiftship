@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, Navigation, Phone, Mail, CheckCircle2, Warehouse, Truck, PenLine, AlertTriangle, ClipboardCheck, MapPin } from "lucide-react";
+import { ArrowLeft, Navigation, Phone, Mail, CheckCircle2, Warehouse, Truck, PenLine, AlertTriangle, ClipboardCheck, MapPin, Lock } from "lucide-react";
 import { api } from "../../lib/api.js";
 import { useApi } from "../../lib/hooks.js";
 import { date } from "../../lib/format.js";
@@ -13,25 +13,37 @@ import { TaskKind } from "./Tasks.jsx";
 
 // Progress shown at the top of the task, per task type.
 const STEPS = {
-  collection: [["assigned", "Assigned"], ["started", "On the way"], ["arrived", "Arrived"], ["collected", "Collected"], ["closed", "At depot"]],
-  delivery: [["assigned", "Assigned"], ["started", "On the way"], ["arrived", "Arrived"], ["completed", "Delivered"]],
-  direct: [["assigned", "Assigned"], ["started", "On the way"], ["arrived", "At collection"], ["collected", "Collected"], ["arrived_delivery", "At delivery"], ["completed", "Delivered"]],
+  collection: [["assigned", "Assigned"], ["started", "Started"], ["arrived", "Arrived"], ["collected", "Collected"], ["at_depot", "At depot"], ["closed", "Closed"]],
+  delivery: [["assigned", "Assigned"], ["started", "Started"], ["arrived_delivery", "Arrived"], ["delivered", "Delivered"], ["closed", "Closed"]],
+  direct: [["assigned", "Assigned"], ["started", "Started"], ["arrived", "At collection"], ["collected", "Collected"], ["arrived_delivery", "At delivery"], ["delivered", "Delivered"], ["closed", "Closed"]],
 };
-const ORDER = ["assigned", "started", "arrived", "collected", "arrived_delivery", "closed", "completed"];
+const ORDER = ["assigned", "started", "arrived", "collected", "at_depot", "arrived_delivery", "delivered", "closed", "completed"];
 const reached = (status, key) => ORDER.indexOf(status) >= ORDER.indexOf(key);
 
-// The three proof forms and their rules (matching the server's).
+// Proof forms and their rules (matching the server's).
 const PROOFS = {
-  collection: { title: "Proof of Collection", hint: "Complete this once you have the items.", person: "Handed over by", photos: "Photos of the collected items", minPhotos: 1, signature: "optional", submit: "Submit collection", notes: "e.g. number of boxes, condition, anything damaged" },
-  depot: { title: "Items at the depot", hint: "Photograph the items where they're stored and get a signature from the depot.", person: "Checked in by (depot staff)", photos: "Photos of the items at the depot", minPhotos: 1, signature: "required", submit: "Confirm at depot & close task", notes: "e.g. bay or shelf location" },
-  delivery: { title: "Proof of Delivery", hint: "Complete this when you hand the items over.", person: "Recipient name", photos: "Photos at delivery (at least 2)", minPhotos: 2, signature: "required", submit: "Save proof of delivery", notes: "e.g. left with neighbour at no. 12, condition on delivery" },
+  collection: { title: "Proof of Collection", hint: "Photograph the items and get the customer's signature.", person: "Handed over by", photos: "Photos of the items collected", minPhotos: 1, submit: "Save collection proof", notes: "e.g. number of boxes, condition, anything damaged" },
+  depot: { title: "Depot drop-off", hint: "Record where the items are stored, photograph them and get a signature from the depot.", person: "Received by (depot staff)", photos: "Photos of the items at the depot", minPhotos: 1, submit: "Save depot record", notes: "e.g. shelf or bay, anything to note", location: "Depot name / location" },
+  delivery: { title: "Proof of Delivery", hint: "Take at least 2 photos and get the recipient's signature.", person: "Recipient name", photos: "Delivery photos (at least 2)", minPhotos: 2, submit: "Save proof of delivery", notes: "e.g. left with neighbour at no. 12, condition on delivery" },
 };
 
+// The phone's position for the step being recorded, if the driver allows location access.
+function currentPosition() {
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) return resolve(undefined);
+    navigator.geolocation.getCurrentPosition(
+      (p) => resolve({ latitude: p.coords.latitude, longitude: p.coords.longitude, accuracy_m: Math.round(p.coords.accuracy) }),
+      () => resolve(undefined),
+      { enableHighAccuracy: true, timeout: 5000, maximumAge: 60000 }
+    );
+  });
+}
+
 // Local date-time string for <input type="datetime-local">.
-const nowLocal = () => {
-  const d = new Date();
-  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-  return d.toISOString().slice(0, 16);
+const toLocalInput = (d) => {
+  const x = new Date(d);
+  x.setMinutes(x.getMinutes() - x.getTimezoneOffset());
+  return x.toISOString().slice(0, 16);
 };
 const toIso = (local) => (local ? new Date(local).toISOString() : undefined);
 
@@ -81,28 +93,34 @@ function Items({ task }) {
   );
 }
 
-/** POC, depot or POD form. Photos and signature rules follow PROOFS. */
-function ProofForm({ task, kind, defaultPerson, onSaved }) {
+/** Collection, depot or delivery proof form. Saving again before the stage is completed corrects it. */
+function ProofForm({ task, kind, defaultPerson, onSaved, onCancel }) {
   const rules = PROOFS[kind];
   const existing = task.proofs?.[kind];
+  const signatureRequired = kind === "collection" ? task.collection_signature_required !== false : true;
   const sigRef = useRef(null);
-  const [form, setForm] = useState({ person_name: existing?.person_name || defaultPerson || "", occurred_at: nowLocal(), notes: existing?.notes || "" });
+  const [form, setForm] = useState({
+    person_name: existing?.person_name || defaultPerson || "",
+    occurred_at: toLocalInput(existing?.occurred_at || new Date()),
+    notes: existing?.notes || "",
+    location: existing?.location || (kind === "depot" ? "Main depot" : ""),
+  });
   const [photos, setPhotos] = useState(existing?.photos || []);
   const [signature, setSignature] = useState(existing?.signature_data || null);
-  const [withSignature, setWithSignature] = useState(rules.signature === "required");
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
 
   const submit = async (e) => {
     e.preventDefault();
     setError(null);
-    const sig = withSignature ? sigRef.current?.toDataURL() || signature : null;
+    const sig = sigRef.current?.toDataURL() || signature;
     if (photos.length < rules.minPhotos) return setError(`Add at least ${rules.minPhotos} photo${rules.minPhotos > 1 ? "s" : ""}.`);
-    if (rules.signature === "required" && !sig) return setError("A signature is required.");
+    if (signatureRequired && !sig) return setError("A signature is required.");
     setBusy(true);
-    const action = { collection: "collect", depot: "close", delivery: "proof" }[kind];
-    const body = { ...form, occurred_at: toIso(form.occurred_at), photos, signature_data: sig, ...(kind === "depot" ? { note: form.notes } : {}) };
+    const action = { collection: "collect", depot: "depot", delivery: "proof" }[kind];
     try {
+      const geo = await currentPosition();
+      const body = { ...form, location: kind === "depot" ? form.location : undefined, occurred_at: toIso(form.occurred_at), photos, signature_data: sig, geo };
       onSaved(await api(`/driver/tasks/${task.id}/${action}`, { method: "POST", body }));
     } catch (err) {
       setError(err.message);
@@ -117,6 +135,9 @@ function ProofForm({ task, kind, defaultPerson, onSaved }) {
         <p className="small muted" style={{ margin: "4px 0 0" }}>{rules.hint}</p>
       </div>
       {error && <Alert type="error">{error}</Alert>}
+      {kind === "depot" && (
+        <Field label={rules.location} htmlFor="pf-location"><input id="pf-location" className="input" value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} required /></Field>
+      )}
       <Field label={rules.person} htmlFor={`pf-name-${kind}`}>
         <input id={`pf-name-${kind}`} className="input" value={form.person_name} onChange={(e) => setForm({ ...form, person_name: e.target.value })} required autoComplete="off" />
       </Field>
@@ -127,17 +148,32 @@ function ProofForm({ task, kind, defaultPerson, onSaved }) {
       <Field label="Notes (optional)" htmlFor={`pf-notes-${kind}`} hint={rules.notes}>
         <textarea id={`pf-notes-${kind}`} className="textarea" rows={3} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
       </Field>
-      {rules.signature === "optional" && (
-        <label className="checkbox"><input type="checkbox" checked={withSignature} onChange={(e) => setWithSignature(e.target.checked)} /> Add a signature</label>
-      )}
-      {withSignature && (
-        <div className="field">
-          <div className="row-between"><span className="label">Signature{rules.signature === "required" ? "" : " (optional)"}</span><button type="button" className="btn btn-ghost btn-sm" onClick={() => { sigRef.current?.clear(); setSignature(null); }}>Clear</button></div>
-          {signature && !sigRef.current?.toDataURL() ? <img src={signature} alt="Saved signature" className="sig-pad" style={{ objectFit: "contain", background: "#fff" }} onClick={() => setSignature(null)} /> : <SignaturePad ref={sigRef} onChange={setSignature} />}
+      <div className="field">
+        <div className="row-between">
+          <span className="label">Signature{signatureRequired ? "" : " (optional)"}</span>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => { sigRef.current?.clear(); setSignature(null); }}>Clear</button>
         </div>
-      )}
-      <button className="btn btn-primary btn-lg btn-block" disabled={busy}><CheckCircle2 size={18} /> {busy ? "Saving…" : existing && kind === "delivery" ? "Update proof of delivery" : rules.submit}</button>
+        {signature && !sigRef.current?.toDataURL() ? <img src={signature} alt="Saved signature – tap to sign again" className="sig-pad" style={{ objectFit: "contain", background: "#fff" }} onClick={() => setSignature(null)} /> : <SignaturePad ref={sigRef} onChange={setSignature} />}
+        <span className="hint">Sign with a finger. Tap a saved signature to sign again.</span>
+      </div>
+      <button className="btn btn-primary btn-lg btn-block" disabled={busy}><CheckCircle2 size={18} /> {busy ? "Saving…" : existing ? `Update ${rules.title.toLowerCase()}` : rules.submit}</button>
+      {onCancel && <button type="button" className="btn btn-ghost" onClick={onCancel}>Cancel</button>}
     </form>
+  );
+}
+
+/** A saved proof with the stage's confirm button (and an edit link while the stage is still open). */
+function SavedProof({ kind, proof, confirmLabel, onConfirm, onEdit, busy, note }) {
+  return (
+    <div className="card stack">
+      <Alert type="success" title={`${PROOFS[kind].title} saved`}>{note || "Check the details below, then confirm."}</Alert>
+      {onConfirm && <button className="btn btn-primary btn-lg btn-block" disabled={busy} onClick={onConfirm}><CheckCircle2 size={18} /> {confirmLabel}</button>}
+      <div className="row-between">
+        <h3 style={{ margin: 0 }}>{PROOFS[kind].title}</h3>
+        {onEdit && <button className="btn btn-ghost btn-sm" onClick={onEdit}><PenLine size={14} /> Edit</button>}
+      </div>
+      <ProofView proof={proof} kind={kind} />
+    </div>
   );
 }
 
@@ -146,7 +182,7 @@ export default function Task() {
   const toast = useToast();
   const { data: task, loading, error, setData } = useApi(`/driver/tasks/${id}`);
   const [busy, setBusy] = useState(false);
-  const [editingPod, setEditingPod] = useState(false);
+  const [editing, setEditing] = useState(null);
   const [issue, setIssue] = useState(null);
 
   if (loading && !task) return <Spinner />;
@@ -155,7 +191,8 @@ export default function Task() {
   const run = async (action, message) => {
     setBusy(true);
     try {
-      setData(await api(`/driver/tasks/${task.id}/${action}`, { method: "POST" }));
+      const geo = await currentPosition();
+      setData(await api(`/driver/tasks/${task.id}/${action}`, { method: "POST", body: { geo } }));
       toast(message);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err) {
@@ -164,37 +201,46 @@ export default function Task() {
       setBusy(false);
     }
   };
-  const saved = (message) => (t) => { setData(t); setEditingPod(false); toast(message); window.scrollTo({ top: 0, behavior: "smooth" }); };
+  const saved = (message) => (t) => { setData(t); setEditing(null); toast(message); window.scrollTo({ top: 0, behavior: "smooth" }); };
 
-  const { kind, status } = task;
-  const pod = task.proofs?.delivery;
-  const atDelivery = (kind === "delivery" && status === "arrived") || (kind === "direct" && status === "arrived_delivery");
+  const { kind, status, proofs = {} } = task;
   const side = task.current_side;
+  const atDelivery = status === "arrived_delivery" || (kind === "delivery" && status === "arrived");
 
   // The one thing the driver should do next.
   let next = null;
   if (status === "assigned") {
-    next = <button className="btn btn-primary btn-lg btn-block" disabled={busy} onClick={() => run("start", kind === "delivery" ? "Customer told you're on the way" : "Task started")}><Truck size={18} /> Start – I'm on my way</button>;
+    next = <button className="btn btn-primary btn-lg btn-block" disabled={busy} onClick={() => run("start", "Task started")}><Truck size={18} /> Start task</button>;
   } else if (status === "started") {
-    next = <button className="btn btn-primary btn-lg btn-block" disabled={busy} onClick={() => run("arrive", "Arrival recorded")}><MapPin size={18} /> I've arrived at the {side} address</button>;
+    next = <button className="btn btn-primary btn-lg btn-block" disabled={busy} onClick={() => run("arrive", "Arrival recorded")}><MapPin size={18} /> Arrived at {side} location</button>;
   } else if (status === "arrived" && kind !== "delivery") {
-    next = <ProofForm task={task} kind="collection" defaultPerson={task.collection?.contact_name} onSaved={saved("Collection recorded")} />;
+    next = proofs.collection && editing !== "collection"
+      ? <SavedProof kind="collection" proof={proofs.collection} confirmLabel="Collection completed" busy={busy} onConfirm={() => run("complete_collection", "Collection completed")} onEdit={() => setEditing("collection")} />
+      : <ProofForm task={task} kind="collection" defaultPerson={task.collection?.contact_name} onSaved={saved("Collection proof saved")} onCancel={proofs.collection ? () => setEditing(null) : null} />;
   } else if (status === "collected" && kind === "collection") {
-    next = <ProofForm task={task} kind="depot" defaultPerson="" onSaved={saved("Items checked in at the depot – task closed")} />;
+    next = <ProofForm task={task} kind="depot" defaultPerson="" onSaved={saved("Depot drop-off recorded")} />;
+  } else if (status === "at_depot") {
+    next = editing === "depot"
+      ? <ProofForm task={task} kind="depot" onSaved={saved("Depot record updated")} onCancel={() => setEditing(null)} />
+      : <SavedProof kind="depot" proof={proofs.depot} confirmLabel="Close task" busy={busy} note="The items are recorded at the depot. Close the task to finish." onConfirm={() => run("close", "Task closed")} onEdit={() => setEditing("depot")} />;
   } else if (status === "collected" && kind === "direct") {
-    next = <button className="btn btn-primary btn-lg btn-block" disabled={busy} onClick={() => run("arrive_delivery", "Arrival recorded")}><MapPin size={18} /> I've arrived at the delivery address</button>;
+    next = <button className="btn btn-primary btn-lg btn-block" disabled={busy} onClick={() => run("arrive_delivery", "Arrival recorded")}><MapPin size={18} /> Arrived at delivery location</button>;
   } else if (atDelivery) {
-    next = pod && !editingPod ? (
+    next = proofs.delivery && editing !== "delivery"
+      ? <SavedProof kind="delivery" proof={proofs.delivery} confirmLabel="Delivery completed" busy={busy} onConfirm={() => run("complete", "Delivery completed")} onEdit={() => setEditing("delivery")} />
+      : <ProofForm task={task} kind="delivery" defaultPerson={task.delivery?.contact_name} onSaved={saved("Proof of delivery saved")} onCancel={proofs.delivery ? () => setEditing(null) : null} />;
+  } else if (status === "delivered") {
+    next = (
       <div className="card stack">
-        <Alert type="success" title="Proof of delivery saved">Check the details below, then close the task.</Alert>
-        <button className="btn btn-primary btn-lg btn-block" disabled={busy} onClick={() => run("complete", "Delivery completed – task closed")}><CheckCircle2 size={18} /> Close task – delivery completed</button>
-        <div className="row-between"><h3 style={{ margin: 0 }}>Proof of Delivery</h3><button className="btn btn-ghost btn-sm" onClick={() => setEditingPod(true)}><PenLine size={14} /> Edit</button></div>
-        <ProofView proof={pod} kind="delivery" />
+        <Alert type="success" title="Delivery completed">Close the task to finish. We'll check everything has been recorded.</Alert>
+        {task.missing_for_close?.length > 0 && <Alert type="warning" title="Still needed">{task.missing_for_close.join(", ")}</Alert>}
+        <button className="btn btn-primary btn-lg btn-block" disabled={busy} onClick={() => run("close", "Task closed")}><Lock size={18} /> Close task</button>
       </div>
-    ) : <ProofForm task={task} kind="delivery" defaultPerson={task.delivery?.contact_name} onSaved={saved("Proof of delivery saved")} />;
+    );
   }
 
   const finished = ["closed", "completed"].includes(status);
+  const shownProofs = ["collection", "depot", "delivery"].filter((k) => proofs[k] && !(next && ((k === "collection" && status === "arrived") || (k === "delivery" && atDelivery) || (k === "depot" && status === "at_depot"))));
   return (
     <div className="stack" style={{ maxWidth: 680 }}>
       <Link to="/driver" className="small row" style={{ gap: 4 }}><ArrowLeft size={14} /> My tasks</Link>
@@ -206,8 +252,7 @@ export default function Task() {
         </ol>
       </div>
 
-      {status === "closed" && <Alert type="success" title="At depot – task closed">The delivery has been set up as a separate task.</Alert>}
-      {status === "completed" && <Alert type="success" title="Delivery completed">The proof of delivery has been saved to the job.</Alert>}
+      {finished && <Alert type="success" title="Task closed">{kind === "collection" ? "The delivery has been set up as a separate task." : "All proof has been saved to the job. Thank you."}</Alert>}
       {status === "cancelled" && <Alert type="warning" title="Task cancelled">This task was cancelled by the office.</Alert>}
 
       {next}
@@ -216,9 +261,7 @@ export default function Task() {
       {kind !== "collection" && task.delivery && <Stop stop={task.delivery} title="Deliver to" active={!finished && side === "delivery"} />}
       <Items task={task} />
 
-      {["collection", "depot", "delivery"].filter((k) => task.proofs?.[k] && !(k === "delivery" && atDelivery)).map((k) => (
-        <div key={k} className="card"><h3>{PROOFS[k].title}</h3><ProofView proof={task.proofs[k]} kind={k} /></div>
-      ))}
+      {shownProofs.map((k) => <div key={k} className="card"><h3>{PROOFS[k].title}</h3><ProofView proof={proofs[k]} kind={k} /></div>)}
 
       {!finished && status !== "cancelled" && (
         <button className="btn btn-ghost" style={{ alignSelf: "flex-start" }} onClick={() => setIssue({ body: "", mark_exception: false })}><AlertTriangle size={16} /> Report a problem</button>

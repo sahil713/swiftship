@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_10_06_000007) do
+ActiveRecord::Schema[8.0].define(version: 2026_10_06_000008) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -26,6 +26,19 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_06_000007) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["user_id"], name: "index_addresses_on_user_id"
+  end
+
+  create_table "audit_logs", force: :cascade do |t|
+    t.string "auditable_type", null: false
+    t.bigint "auditable_id", null: false
+    t.bigint "user_id"
+    t.string "action", null: false
+    t.jsonb "changes_made", default: {}, null: false
+    t.text "reason"
+    t.datetime "created_at", null: false
+    t.index ["auditable_type", "auditable_id", "created_at"], name: "idx_on_auditable_type_auditable_id_created_at_32105c5b9d"
+    t.index ["auditable_type", "auditable_id"], name: "index_audit_logs_on_auditable"
+    t.index ["user_id"], name: "index_audit_logs_on_user_id"
   end
 
   create_table "booking_notes", force: :cascade do |t|
@@ -121,6 +134,26 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_06_000007) do
     t.index ["postcode_areas"], name: "index_delivery_areas_on_postcode_areas", using: :gin
   end
 
+  create_table "driver_documents", force: :cascade do |t|
+    t.bigint "user_id", null: false
+    t.bigint "uploaded_by_id"
+    t.string "doc_type", null: false
+    t.string "filename", null: false
+    t.string "content_type", null: false
+    t.integer "byte_size", null: false
+    t.binary "data", null: false
+    t.date "expires_on"
+    t.text "notes"
+    t.datetime "replaced_at"
+    t.bigint "replaced_by_id"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["replaced_by_id"], name: "index_driver_documents_on_replaced_by_id"
+    t.index ["uploaded_by_id"], name: "index_driver_documents_on_uploaded_by_id"
+    t.index ["user_id", "doc_type", "replaced_at"], name: "index_driver_documents_on_user_id_and_doc_type_and_replaced_at"
+    t.index ["user_id"], name: "index_driver_documents_on_user_id"
+  end
+
   create_table "driver_tasks", force: :cascade do |t|
     t.bigint "booking_id", null: false
     t.bigint "driver_id"
@@ -135,6 +168,8 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_06_000007) do
     t.datetime "updated_at", null: false
     t.datetime "arrived_at"
     t.datetime "arrived_delivery_at"
+    t.datetime "delivered_at"
+    t.datetime "at_depot_at"
     t.index ["booking_id", "kind"], name: "index_driver_tasks_on_booking_id_and_kind"
     t.index ["booking_id"], name: "index_driver_tasks_on_booking_id"
     t.index ["driver_id", "status"], name: "index_driver_tasks_on_driver_id_and_status"
@@ -264,6 +299,9 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_06_000007) do
     t.datetime "occurred_at", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.decimal "latitude", precision: 10, scale: 6
+    t.decimal "longitude", precision: 10, scale: 6
+    t.integer "accuracy_m"
     t.index ["driver_task_id"], name: "index_task_events_on_driver_task_id"
     t.index ["user_id"], name: "index_task_events_on_user_id"
   end
@@ -279,6 +317,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_06_000007) do
     t.jsonb "photos", default: [], null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "location"
     t.index ["driver_task_id", "kind"], name: "index_task_proofs_on_driver_task_id_and_kind", unique: true
     t.index ["user_id"], name: "index_task_proofs_on_user_id"
   end
@@ -309,6 +348,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_06_000007) do
   end
 
   add_foreign_key "addresses", "users"
+  add_foreign_key "audit_logs", "users"
   add_foreign_key "booking_notes", "bookings"
   add_foreign_key "booking_notes", "users"
   add_foreign_key "bookings", "services"
@@ -316,6 +356,9 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_06_000007) do
   add_foreign_key "bookings", "users", column: "driver_id"
   add_foreign_key "change_requests", "bookings"
   add_foreign_key "change_requests", "users"
+  add_foreign_key "driver_documents", "users"
+  add_foreign_key "driver_documents", "users", column: "replaced_by_id"
+  add_foreign_key "driver_documents", "users", column: "uploaded_by_id"
   add_foreign_key "driver_tasks", "bookings"
   add_foreign_key "driver_tasks", "users", column: "driver_id"
   add_foreign_key "enquiries", "bookings"

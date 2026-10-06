@@ -5,7 +5,7 @@ import { date, TASK_KIND_LABELS } from "../../lib/format.js";
 import { Badge, Empty, Spinner, Tabs } from "../../components/ui.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
 
-const TONE = { assigned: "warning", started: "accent", arrived: "accent", collected: "info", arrived_delivery: "accent", closed: "good", completed: "good" };
+const TONE = { assigned: "warning", started: "accent", arrived: "accent", collected: "info", at_depot: "info", arrived_delivery: "accent", delivered: "good", closed: "good", completed: "good" };
 
 export function TaskKind({ kind }) {
   const Icon = { collection: PackageOpen, delivery: Truck, direct: Route }[kind] || Truck;

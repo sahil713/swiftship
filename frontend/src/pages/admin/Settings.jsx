@@ -34,6 +34,13 @@ export default function Settings() {
         <p className="small muted" style={{ margin: 0 }}>Ireland – the Republic of Ireland and Northern Ireland – is never served. Areas we don't normally serve are managed under <a href="/admin/pricing">Services &amp; pricing → Service area rules</a>.</p>
       </div>
       <fieldset className="card stack" disabled={!isAdmin}>
+        <h3 style={{ margin: 0 }}>Driver proof</h3>
+        <label className="checkbox">
+          <input type="checkbox" checked={form.require_collection_signature !== false} onChange={(e) => setForm({ ...form, require_collection_signature: e.target.checked })} />
+          <span><strong>Require a signature at collection</strong><br /><span className="small muted">Drivers must capture the customer's signature with the proof of collection. Delivery and depot records always need a signature, and deliveries always need at least 2 photos.</span></span>
+        </label>
+      </fieldset>
+      <fieldset className="card stack" disabled={!isAdmin}>
         <h3 style={{ margin: 0 }}>Quote requests</h3>
         <Field label="Email new requests to" htmlFor="st-enq" hint="Every new customer request is emailed here with all its details. Separate several addresses with commas. Leave blank to email all admin users.">
           <input id="st-enq" className="input" placeholder="e.g. bookings@yourcompany.co.uk" value={form.enquiry_notification_email || ""} onChange={(e) => setForm({ ...form, enquiry_notification_email: e.target.value })} />

@@ -16,8 +16,10 @@ module Api
         end
 
         def show
+          history = @driver.audit_logs.includes(:user).newest_first.limit(100)
           tasks = @driver.driver_tasks.includes(:proofs, booking: :service).order(created_at: :desc).limit(100)
-          render json: { driver: driver_json(@driver), tasks: tasks.map { task_summary(_1) } }
+          render json: { driver: driver_json(@driver), tasks: tasks.map { task_summary(_1) },
+                         history: (current_user.admin? ? history.map(&:as_json) : []) }
         end
 
         def create
@@ -44,7 +46,10 @@ module Api
                 unassigned += 1
               end
             end
-            @driver.update!(attrs)
+            @driver.assign_attributes(attrs)
+            changes = audited_changes(@driver)
+            @driver.save!
+            AuditLog.record!(@driver, user: current_user, action: "profile_updated", changes:)
           end
           render json: driver_json(@driver).merge(unassigned_tasks: unassigned)
         end
@@ -60,6 +65,18 @@ module Api
         end
 
         private
+
+        # Old → new values for the audit log. Passwords and sensitive numbers are never written to it.
+        def audited_changes(driver)
+          driver.changes_to_save.except("updated_at", "name").each_with_object({}) do |(field, (old, new)), out|
+            out[field] =
+              if field == "password_digest" then ["(hidden)", "password reset"]
+              elsif User::SENSITIVE_DRIVER_FIELDS.map(&:to_s).include?(field) && !%w[visa_status visa_expiry bank_account_name].include?(field)
+                [old.present? ? "••••#{old.to_s[-4..]}" : nil, new.present? ? "••••#{new.to_s[-4..]}" : nil]
+              else [old, new]
+              end
+          end
+        end
 
         def load_driver = @driver = User.where(role: "driver").find(params[:id])
 

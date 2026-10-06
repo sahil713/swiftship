@@ -194,37 +194,53 @@ class BookingFlowTest < ActionDispatch::IntegrationTest
   PHOTO = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ==".freeze
   SIGNATURE = "data:image/png;base64,iVBORw0KGgo=".freeze
 
-  # Drives a job through the driver portal: start → arrive → POC → depot → (new delivery task) → start → arrive → POD → close.
+  GEO = { latitude: 51.501, longitude: -0.1416, accuracy_m: 12 }.freeze
+
+  # Full depot journey through the driver portal:
+  # start → arrive → POC → collection completed → depot record → close → (delivery task) start → arrive → POD → delivery completed → close.
   def deliver_through_driver_portal(collection_task_id, driver)
     headers = auth_headers(driver.email)
-    post_task = ->(id, action, params = {}) { post "/api/v1/driver/tasks/#{id}/#{action}", params:, headers:, as: :json }
+    post_task = ->(id, action, params = {}) { post "/api/v1/driver/tasks/#{id}/#{action}", params: params.merge(geo: GEO), headers:, as: :json }
 
     get "/api/v1/driver/tasks", headers: headers
     assert_includes json.map { _1["id"] }, collection_task_id
 
-    post_task.(collection_task_id, "collect", person_name: "Guest Sender", photos: [PHOTO])
+    post_task.(collection_task_id, "collect", person_name: "Guest Sender", photos: [PHOTO], signature_data: SIGNATURE)
     assert_response :unprocessable_entity, "must arrive before recording collection"
     post_task.(collection_task_id, "start")
-    assert_equal "In Progress", json["status_label"]
+    assert_equal "Task Started", json["status_label"]
     post_task.(collection_task_id, "arrive")
-    assert_equal "Arrived at Collection", json["status_label"]
+    assert_equal "Arrived at Collection Location", json["status_label"]
 
-    post_task.(collection_task_id, "close", person_name: "Depot", photos: [PHOTO], signature_data: SIGNATURE)
-    assert_response :unprocessable_entity, "can't check in at the depot before proof of collection"
-
-    post_task.(collection_task_id, "collect", person_name: "Guest Sender", notes: "2 boxes, well packed", photos: [PHOTO, PHOTO])
+    post_task.(collection_task_id, "complete_collection")
+    assert_response :unprocessable_entity, "can't complete collection without proof"
+    post_task.(collection_task_id, "collect", person_name: "Guest Sender", photos: [PHOTO])
+    assert_response :unprocessable_entity, "collection signature is required by default"
+    post_task.(collection_task_id, "collect", person_name: "Guest Sender", notes: "2 boxes", photos: [PHOTO, PHOTO], signature_data: SIGNATURE)
     assert_response :success, response.body
-    assert_equal "collected", json["status"]
+    post_task.(collection_task_id, "collect", person_name: "Guest Sender", notes: "2 boxes, well packed", photos: [PHOTO, PHOTO], signature_data: SIGNATURE)
+    assert_response :success, "proof can be corrected until the collection is completed"
+    post_task.(collection_task_id, "complete_collection")
+    assert_response :success, response.body
+    assert_equal "In Transit", json["status_label"]
     assert_equal "collected", json["booking_status"]
-    assert_equal 2, json.dig("proofs", "collection", "photos").size
+    post_task.(collection_task_id, "collect", person_name: "Someone else", photos: [PHOTO], signature_data: SIGNATURE)
+    assert_response :unprocessable_entity, "collection proof is locked once the collection is completed"
 
-    post_task.(collection_task_id, "close", note: "Bay 4", person_name: "Depot team", photos: [PHOTO])
-    assert_response :unprocessable_entity, "depot check-in needs a signature"
-    post_task.(collection_task_id, "close", note: "Bay 4", person_name: "Depot team", photos: [PHOTO], signature_data: SIGNATURE)
+    post_task.(collection_task_id, "close")
+    assert_response :unprocessable_entity, "can't close before the depot drop-off"
+    assert_match(/depot/, json["error"])
+    post_task.(collection_task_id, "depot", person_name: "Depot team", photos: [PHOTO], signature_data: SIGNATURE)
+    assert_response :unprocessable_entity, "depot location is required"
+    post_task.(collection_task_id, "depot", person_name: "Depot team", location: "Bay 4", photos: [PHOTO])
+    assert_response :unprocessable_entity, "depot record needs a signature"
+    post_task.(collection_task_id, "depot", person_name: "Depot team", location: "Bay 4", photos: [PHOTO], signature_data: SIGNATURE)
     assert_response :success, response.body
-    assert_equal "closed", json["status"]
     assert_equal "At Depot", json["status_label"]
     assert_equal "in_warehouse", json["booking_status"]
+    post_task.(collection_task_id, "close")
+    assert_response :success, response.body
+    assert_equal "Task Closed", json["status_label"]
 
     get "/api/v1/driver/tasks", headers: headers
     job_ref = DriverTask.find(collection_task_id).booking.reference
@@ -233,24 +249,30 @@ class BookingFlowTest < ActionDispatch::IntegrationTest
     refute_includes json.map { _1["id"] }, collection_task_id, "closed task leaves the active list"
 
     post_task.(delivery["id"], "start")
-    assert_equal "Out for Delivery", json["status_label"]
+    assert_equal "out_for_delivery", json["booking_status"]
     post_task.(delivery["id"], "proof", person_name: "R. Receiver", photos: [PHOTO, PHOTO], signature_data: SIGNATURE)
     assert_response :unprocessable_entity, "must arrive before recording delivery"
     post_task.(delivery["id"], "arrive")
+    assert_equal "Arrived at Delivery Location", json["status_label"]
 
     post_task.(delivery["id"], "proof", person_name: "R. Receiver", photos: [PHOTO], signature_data: SIGNATURE)
     assert_response :unprocessable_entity, "POD needs at least two photos"
     post_task.(delivery["id"], "proof", person_name: "R. Receiver", photos: [PHOTO, PHOTO])
     assert_response :unprocessable_entity, "POD needs a signature"
     post_task.(delivery["id"], "complete")
-    assert_response :unprocessable_entity, "can't close without POD"
+    assert_response :unprocessable_entity, "can't complete delivery without POD"
+    post_task.(delivery["id"], "close")
+    assert_response :unprocessable_entity, "can't close before the delivery is completed"
 
     post_task.(delivery["id"], "proof", person_name: "R. Receiver", occurred_at: Time.current.iso8601, notes: "Handed over", photos: [PHOTO, PHOTO], signature_data: SIGNATURE)
     assert_response :success, response.body
     post_task.(delivery["id"], "complete")
     assert_response :success, response.body
-    assert_equal "completed", json["status"]
+    assert_equal "Delivery Completed", json["status_label"]
     assert_equal "delivered", json["booking_status"]
+    post_task.(delivery["id"], "close")
+    assert_response :success, response.body
+    assert_equal "Task Closed", json["status_label"]
   end
 
   test "drivers only see their own tasks" do
@@ -285,17 +307,24 @@ class BookingFlowTest < ActionDispatch::IntegrationTest
     get "/api/v1/admin/bookings/#{booking.reference}", headers: admin
     tasks = json.dig("booking", "tasks")
     assert_equal %w[collection delivery], tasks.map { _1["kind"] }
-    assert_equal %w[closed completed], tasks.map { _1["status"] }
+    assert_equal %w[closed closed], tasks.map { _1["status"] }
     assert_equal "Guest Sender", tasks[0].dig("proofs", "collection", "person_name")
     assert_equal "Depot team", tasks[0].dig("proofs", "depot", "person_name")
+    assert_equal "Bay 4", tasks[0].dig("proofs", "depot", "location")
     assert_equal "R. Receiver", tasks[1].dig("proofs", "delivery", "person_name")
     assert tasks[1].dig("proofs", "delivery", "signature_data").present?
     assert_equal "Bay 4", tasks[0]["warehouse_note"]
+    assert_equal({ "latitude" => 51.501, "longitude" => -0.1416, "accuracy_m" => 12 }, tasks[0]["events"].find { _1["action"] == "started" }["location"])
 
     # Every step is recorded and timed.
-    assert_equal %w[assigned started arrived collected depot], tasks[0]["events"].map { _1["action"] }
-    assert_equal %w[assigned started arrived pod_recorded completed], tasks[1]["events"].map { _1["action"] }
-    assert_equal ["Travel to collection", "At collection", "Collection to depot"], tasks[0].dig("timings", "stages").map { _1["label"] }
+    assert_equal %w[assigned started arrived_collection collection_proof collection_signature collection_proof_updated collection_completed depot closed],
+                 tasks[0]["events"].map { _1["action"] }
+    assert_equal %w[assigned started arrived_delivery delivery_proof delivery_signature delivery_completed closed], tasks[1]["events"].map { _1["action"] }
+    assert_equal ["Travel to collection", "Collection duration", "Travel to depot", "At depot until closed"], tasks[0].dig("timings", "stages").map { _1["label"] }
+
+    # The corrected collection proof kept its original notes in the audit trail.
+    poc = DriverTask.find(tasks[0]["id"]).proof_of("collection")
+    assert_equal({ "notes" => ["2 boxes", "2 boxes, well packed"] }, poc.audit_logs.last.changes_made)
     assert tasks[0].dig("timings", "stages").all? { _1["seconds"].is_a?(Integer) && _1["seconds"] >= 0 }
     assert tasks[1].dig("timings", "total_seconds").is_a?(Integer)
   end
@@ -330,19 +359,57 @@ class BookingFlowTest < ActionDispatch::IntegrationTest
     act.("start"); act.("arrive")
     assert_equal booking.collection_line1, json.dig("collection", "address", "line1")
     # The driver enters a collection time a minute in the past (forms only go to the minute) – timings must stay positive.
-    act.("collect", person_name: "Sender", photos: [PHOTO], occurred_at: 1.minute.ago.iso8601)
-    assert_equal "Collected – In Transit", json["status_label"]
+    act.("collect", person_name: "Sender", photos: [PHOTO], signature_data: SIGNATURE, occurred_at: 1.minute.ago.iso8601)
+    act.("complete_collection")
+    assert_equal "In Transit", json["status_label"]
     assert_equal "in_transit", json["booking_status"]
     act.("arrive_delivery")
-    assert_equal "Arrived at Delivery", json["status_label"]
+    assert_equal "Arrived at Delivery Location", json["status_label"]
     assert_equal "out_for_delivery", json["booking_status"]
     act.("proof", person_name: "Recipient", photos: [PHOTO, PHOTO], signature_data: SIGNATURE)
     act.("complete")
-    assert_response :success, response.body
     assert_equal "delivered", json["booking_status"]
+    act.("close")
+    assert_response :success, response.body
+    assert_equal "Task Closed", json["status_label"]
     assert_equal %w[collection delivery], json["proofs"].keys.sort
-    assert_equal ["Travel to collection", "At collection", "Travel to delivery", "At delivery"], json.dig("timings", "stages").map { _1["label"] }
-    refute DriverTask.where(booking:, kind: "delivery").exists?, "no separate delivery task for a direct job"
+    assert_equal ["Travel to collection", "Collection duration", "Travel to delivery", "Delivery duration"], json.dig("timings", "stages").map { _1["label"] }
     assert json.dig("timings", "stages").all? { _1["seconds"] >= 0 }, "stage timings never go negative"
+    assert json.dig("timings", "total_seconds").is_a?(Integer)
+    refute DriverTask.where(booking:, kind: "delivery").exists?, "no separate delivery task for a direct job"
+  end
+
+  test "task history is append-only and admin corrections keep the original values" do
+    booking = Booking.find_by!(status: "quote_requested")
+    admin = auth_headers("admin@swiftship.example")
+    dan = User.find_by!(email: "driver@swiftship.example")
+    post "/api/v1/admin/bookings/#{booking.reference}/status", params: { status: "booked" }, headers: admin, as: :json
+    post "/api/v1/admin/bookings/#{booking.reference}/assign_task", params: { kind: "direct", driver_id: dan.id }, headers: admin, as: :json
+    task = DriverTask.find(json.dig("booking", "tasks").first["id"])
+    task.start!(user: dan)
+    task.arrive!(user: dan)
+    task.save_collection_proof!(user: dan, person_name: "Sendr", occurred_at: Time.current, photos: [PHOTO], signature_data: SIGNATURE)
+
+    assert_raises(ActiveRecord::ReadOnlyRecord) { task.events.first.update!(note: "edited") }
+    assert_raises(ActiveRecord::ReadOnlyRecord) { task.events.first.destroy }
+
+    post "/api/v1/admin/tasks/#{task.id}/proofs/collection/correct", params: { person_name: "Sender" }, headers: admin, as: :json
+    assert_response :unprocessable_entity, "corrections need a reason"
+    post "/api/v1/admin/tasks/#{task.id}/proofs/collection/correct", params: { person_name: "Sender" }, headers: auth_headers("ops@swiftship.example"), as: :json
+    assert_response :forbidden, "only admins can correct records"
+    post "/api/v1/admin/tasks/#{task.id}/proofs/collection/correct", params: { person_name: "Sender", reason: "Typo in name" }, headers: admin, as: :json
+    assert_response :success, response.body
+    assert_equal "Sender", json.dig("proofs", "collection", "person_name")
+    correction = json["corrections"].first
+    assert_equal({ "person_name" => ["Sendr", "Sender"] }, correction["changes"])
+    assert_equal "Typo in name", correction["reason"]
+    assert_equal "Alex Admin", correction["by"]
+    assert_includes json["events"].map { _1["action"] }, "proof_corrected"
+
+    # The task details page has everything in one place.
+    get "/api/v1/admin/tasks/#{task.id}", headers: admin
+    assert_equal booking.reference, json.dig("booking", "reference")
+    assert_equal booking.delivery_address, json.dig("booking", "delivery", "address")
+    assert json["missing_for_close"].include?("collection completed")
   end
 end

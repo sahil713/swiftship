@@ -43,14 +43,20 @@ export const humanize = (s) => (s ? s.replace(/_/g, " ").replace(/^\w/, (c) => c
 export const penceFromPounds = (v) => Math.round(parseFloat(v || 0) * 100);
 export const poundsFromPence = (p) => (p === null || p === undefined ? "" : (p / 100).toFixed(2));
 
-/** Human-friendly duration, e.g. 3725 → "1 h 2 min". */
+/** Human-friendly duration, e.g. 8100 → "2 hours 15 minutes". */
 export const duration = (seconds) => {
   if (seconds === null || seconds === undefined) return "—";
-  if (seconds < 60) return "under 1 min";
+  if (seconds < 60) return "less than a minute";
   const mins = Math.round(seconds / 60);
   const h = Math.floor(mins / 60);
   const m = mins % 60;
-  return h ? `${h} h${m ? ` ${m} min` : ""}` : `${m} min`;
+  const part = (n, unit) => `${n} ${unit}${n === 1 ? "" : "s"}`;
+  return [h && part(h, "hour"), m && part(m, "minute")].filter(Boolean).join(" ");
 };
 
-export const TASK_KIND_LABELS = { collection: "Collection", delivery: "Delivery", direct: "Collect & deliver" };
+export const exactDateTime = (value) =>
+  value ? new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(new Date(value)) : "—";
+
+export const timeOnly = (value) => (value ? new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit" }).format(new Date(value)) : "—");
+
+export const TASK_KIND_LABELS = { collection: "Collection", delivery: "Delivery", direct: "Collection + Delivery" };

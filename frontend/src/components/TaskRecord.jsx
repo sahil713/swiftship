@@ -1,4 +1,4 @@
-import { dateTime, duration } from "../lib/format.js";
+import { exactDateTime, duration } from "../lib/format.js";
 import ProofView from "./ProofView.jsx";
 
 /** How long each stage of a task took, plus the total from setting off to closing. */
@@ -26,8 +26,12 @@ export function TaskEvents({ events }) {
         const gap = i ? Math.round((new Date(e.occurred_at) - new Date(events[i - 1].occurred_at)) / 1000) : null;
         return (
           <li key={e.id}>
-            <span className="muted">{dateTime(e.occurred_at)}{gap !== null && <div className="gap">+{duration(gap)}</div>}</span>
-            <span><strong>{e.label}</strong>{e.by && <span className="muted"> · {e.by}</span>}{e.note && <div className="small muted">{e.note}</div>}</span>
+            <span className="muted">{exactDateTime(e.occurred_at)}{gap !== null && <div className="gap">+{duration(gap)}</div>}</span>
+            <span>
+              <strong>{e.label}</strong>{e.by && <span className="muted"> · {e.by}</span>}
+              {e.note && <div className="small muted">{e.note}</div>}
+              {e.location && <div className="small"><a href={`https://www.google.com/maps?q=${e.location.latitude},${e.location.longitude}`} target="_blank" rel="noreferrer">📍 Phone location{e.location.accuracy_m ? ` (±${e.location.accuracy_m} m)` : ""}</a></div>}
+            </span>
           </li>
         );
       })}
@@ -35,7 +39,7 @@ export function TaskEvents({ events }) {
   );
 }
 
-const PROOF_TITLES = { collection: "Proof of Collection (POC)", depot: "Depot check-in", delivery: "Proof of Delivery (POD)" };
+const PROOF_TITLES = { collection: "Proof of Collection (POC)", depot: "Depot drop-off", delivery: "Proof of Delivery (POD)" };
 
 export function TaskProofs({ proofs }) {
   const kinds = ["collection", "depot", "delivery"].filter((k) => proofs?.[k]);

@@ -6,11 +6,12 @@ import { Modal } from "./ui.jsx";
 export default function ProofView({ proof, kind }) {
   const [open, setOpen] = useState(null);
   if (!proof) return null;
-  const personLabel = { collection: "Handed over by", depot: "Checked in by", delivery: "Received by" }[kind];
+  const personLabel = { collection: "Handed over by", depot: "Received by (depot)", delivery: "Received by" }[kind];
   const timeLabel = { collection: "Collected", depot: "At depot", delivery: "Delivered" }[kind];
   return (
     <div className="stack" style={{ "--gap": "10px" }}>
       <dl className="detail-list">
+        {kind === "depot" && proof.location && <div><dt>Depot</dt><dd>{proof.location}</dd></div>}
         <div><dt>{personLabel}</dt><dd>{proof.person_name}</dd></div>
         <div><dt>{timeLabel}</dt><dd>{dateTime(proof.occurred_at)}</dd></div>
         {proof.notes && <div><dt>Notes</dt><dd>{proof.notes}</dd></div>}

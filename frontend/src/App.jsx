@@ -27,6 +27,7 @@ import AdminStaff from "./pages/admin/Staff.jsx";
 import AdminSettings from "./pages/admin/Settings.jsx";
 import AdminDrivers, { DriverDetail as AdminDriver } from "./pages/admin/Drivers.jsx";
 import AdminTasks from "./pages/admin/Tasks.jsx";
+import AdminTaskDetail from "./pages/admin/TaskDetail.jsx";
 import DriverTasks from "./pages/driver/Tasks.jsx";
 import DriverTask from "./pages/driver/Task.jsx";
 
@@ -95,6 +96,7 @@ export default function App() {
         <Route path="admin/drivers" element={<AdminDrivers />} />
         <Route path="admin/drivers/:id" element={<AdminDriver />} />
         <Route path="admin/tasks" element={<AdminTasks />} />
+        <Route path="admin/tasks/:id" element={<AdminTaskDetail />} />
       </Route>
 
       <Route element={<RequireRole roles={["driver", "operations", "admin"]}><AppLayout title="Operations" links={DRIVER_LINKS} /></RequireRole>}>
