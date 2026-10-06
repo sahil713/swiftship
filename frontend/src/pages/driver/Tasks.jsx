@@ -1,15 +1,15 @@
 import { Link, useNavigate } from "react-router-dom";
-import { MapPin, Phone, PackageOpen, Truck, ChevronRight, Calendar } from "lucide-react";
+import { MapPin, Phone, PackageOpen, Truck, ChevronRight, Calendar, Route } from "lucide-react";
 import { useApi } from "../../lib/hooks.js";
-import { date } from "../../lib/format.js";
+import { date, TASK_KIND_LABELS } from "../../lib/format.js";
 import { Badge, Empty, Spinner, Tabs } from "../../components/ui.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
 
-const TONE = { assigned: "warning", started: "accent", collected: "info", closed: "good", completed: "good" };
+const TONE = { assigned: "warning", started: "accent", arrived: "accent", collected: "info", arrived_delivery: "accent", closed: "good", completed: "good" };
 
 export function TaskKind({ kind }) {
-  const Icon = kind === "collection" ? PackageOpen : Truck;
-  return <span className={`task-kind ${kind}`}><Icon size={14} /> {kind}</span>;
+  const Icon = { collection: PackageOpen, delivery: Truck, direct: Route }[kind] || Truck;
+  return <span className={`task-kind ${kind}`}><Icon size={14} /> {TASK_KIND_LABELS[kind] || kind}</span>;
 }
 
 export default function Tasks({ completed = false }) {

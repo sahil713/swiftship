@@ -535,3 +535,11 @@ main { flex: 1; }
 .proof-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; }
 .proof-gallery a { display: block; aspect-ratio: 1; border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--border); }
 .proof-gallery img { width: 100%; height: 100%; object-fit: cover; }
+.task-kind.direct { background: var(--good-soft); color: var(--good); }
+.event-timeline { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
+.event-timeline li { display: grid; grid-template-columns: 92px 1fr; gap: 10px; padding: 8px 0; border-top: 1px dashed var(--border); font-size: 0.88rem; }
+.event-timeline li:first-child { border-top: 0; }
+.event-timeline .gap { color: var(--text-muted); font-size: 0.78rem; }
+.timing-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.timing-chip { display: inline-flex; gap: 6px; align-items: baseline; padding: 4px 10px; border-radius: 999px; background: var(--bg-inset); font-size: 0.8rem; }
+.timing-chip strong { font-variant-numeric: tabular-nums; }

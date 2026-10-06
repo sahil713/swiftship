@@ -11,7 +11,7 @@ module Api
         rescue_from DriverTask::InvalidStep, with: ->(e) { render json: { error: e.message }, status: :unprocessable_entity }
 
         def index
-          scope = tasks_scope.includes(:driver, :proof, booking: :service).order(:created_at)
+          scope = tasks_scope.includes(:driver, :proofs, :events, booking: :service).order(:created_at)
           scope = params[:scope] == "completed" ? scope.finished.reorder(updated_at: :desc).limit(50) : scope.open
           render json: scope.map { task_json(_1) }
         end
@@ -24,8 +24,20 @@ module Api
           render_task
         end
 
+        def arrive
+          @task.arrive!(user: current_user)
+          render_task
+        end
+
+        # Direct jobs: arrived at the delivery address after collecting.
+        def arrive_delivery
+          @task.arrive_at_delivery!(user: current_user)
+          render_task
+        end
+
+        # Collection task: items checked in at the depot (photos + signature), closing the task.
         def close
-          @task.close_at_warehouse!(user: current_user, note: params[:note])
+          @task.close_at_depot!(user: current_user, note: params[:note], **proof_params)
           render_task
         end
 
@@ -72,23 +84,28 @@ module Api
 
         def render_task = render(json: task_json(@task.reload, full: true))
 
-        # Only what the driver needs for this leg of the job.
+        # Only what the driver needs for this task: the address(es) and contacts for its legs.
         def task_json(task, full: false)
           b = task.booking
-          side = task.collection? ? "collection" : "delivery"
+          side = task.current_side
+          stop = lambda do |s|
+            { contact_name: b["#{s}_contact_name"], contact_phone: b["#{s}_phone"], contact_email: b["#{s}_email"],
+              address: { line1: b["#{s}_line1"], line2: b["#{s}_line2"], city: b["#{s}_city"], postcode: b["#{s}_postcode"] },
+              instructions: b["#{s}_instructions"] }
+          end
           data = task.as_json.merge(
-            reference: b.reference, tracking_number: b.tracking_number, booking_status: b.status,
-            service: b.service.name, date: task.collection? ? b.collection_date : b.estimated_delivery_date,
-            contact_name: b["#{side}_contact_name"], contact_phone: b["#{side}_phone"], contact_email: b["#{side}_email"],
-            address: { line1: b["#{side}_line1"], line2: b["#{side}_line2"], city: b["#{side}_city"], postcode: b["#{side}_postcode"] },
-            instructions: b["#{side}_instructions"], special_requirements: b.special_requirements,
+            reference: b.reference, tracking_number: b.tracking_number, booking_status: b.status, service: b.service.name,
+            date: side == "collection" ? b.collection_date : b.estimated_delivery_date,
+            collection: (stop.call("collection") unless task.delivery?),
+            delivery: (stop.call("delivery") unless task.collection?),
+            special_requirements: b.special_requirements, customer_email: (b.customer_email unless task.delivery?),
             item: { description: b.item_description, quantity: b.quantity, weight_kg: b.weight_kg&.to_f,
                     length_cm: b.length_cm&.to_f, width_cm: b.width_cm&.to_f, height_cm: b.height_cm&.to_f, fragile: b.fragile }
-          )
-          data[:customer_email] = b.customer_email if task.collection?
-          # Lists only need to know a proof exists – images are sent with the single task.
-          if !full && data[:proof]
-            data[:proof] = data[:proof].except("signature_data", "photos").merge("photo_count" => task.proof.photos.size)
+          ).merge(stop.call(side)) # contact_name/address etc. for the current stop, used by the task list
+          # Lists only need proof summaries – images are sent with the single task.
+          unless full
+            data["proofs"] = task.proofs.to_h { [_1.kind, { "person_name" => _1.person_name, "photo_count" => _1.photos.size }] }
+            data.delete("events")
           end
           data
         end

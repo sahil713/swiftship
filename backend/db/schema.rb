@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_10_06_000005) do
+ActiveRecord::Schema[8.0].define(version: 2026_10_06_000007) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -133,6 +133,8 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_06_000005) do
     t.datetime "completed_at"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.datetime "arrived_at"
+    t.datetime "arrived_delivery_at"
     t.index ["booking_id", "kind"], name: "index_driver_tasks_on_booking_id_and_kind"
     t.index ["booking_id"], name: "index_driver_tasks_on_booking_id"
     t.index ["driver_id", "status"], name: "index_driver_tasks_on_driver_id_and_status"
@@ -254,6 +256,18 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_06_000005) do
     t.index ["code"], name: "index_surcharges_on_code", unique: true
   end
 
+  create_table "task_events", force: :cascade do |t|
+    t.bigint "driver_task_id", null: false
+    t.bigint "user_id"
+    t.string "action", null: false
+    t.text "note"
+    t.datetime "occurred_at", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["driver_task_id"], name: "index_task_events_on_driver_task_id"
+    t.index ["user_id"], name: "index_task_events_on_user_id"
+  end
+
   create_table "task_proofs", force: :cascade do |t|
     t.bigint "driver_task_id", null: false
     t.bigint "user_id"
@@ -265,7 +279,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_06_000005) do
     t.jsonb "photos", default: [], null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.index ["driver_task_id"], name: "index_task_proofs_on_driver_task_id", unique: true
+    t.index ["driver_task_id", "kind"], name: "index_task_proofs_on_driver_task_id_and_kind", unique: true
     t.index ["user_id"], name: "index_task_proofs_on_user_id"
   end
 
@@ -279,6 +293,16 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_06_000005) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.string "username"
+    t.string "first_name"
+    t.string "last_name"
+    t.string "licence_number"
+    t.string "transmission"
+    t.string "passport_number"
+    t.string "visa_status"
+    t.date "visa_expiry"
+    t.string "bank_account_name"
+    t.string "bank_sort_code"
+    t.string "bank_account_number"
     t.index "lower((email)::text)", name: "index_users_on_lower_email", unique: true
     t.index "lower((username)::text)", name: "index_users_on_lower_username", unique: true, where: "(username IS NOT NULL)"
     t.index ["role"], name: "index_users_on_role"
@@ -301,6 +325,8 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_06_000005) do
   add_foreign_key "proof_of_deliveries", "users"
   add_foreign_key "status_events", "bookings"
   add_foreign_key "status_events", "users"
+  add_foreign_key "task_events", "driver_tasks"
+  add_foreign_key "task_events", "users"
   add_foreign_key "task_proofs", "driver_tasks"
   add_foreign_key "task_proofs", "users"
 end

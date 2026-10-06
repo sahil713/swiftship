@@ -16,7 +16,7 @@ module Api
         end
 
         def show
-          tasks = @driver.driver_tasks.includes(:proof, booking: :service).order(created_at: :desc).limit(100)
+          tasks = @driver.driver_tasks.includes(:proofs, booking: :service).order(created_at: :desc).limit(100)
           render json: { driver: driver_json(@driver), tasks: tasks.map { task_summary(_1) } }
         end
 
@@ -34,13 +34,13 @@ module Api
 
           User.transaction do
             if deactivating
-              holding = @driver.driver_tasks.where(status: "collected")
+              holding = @driver.driver_tasks.where(status: %w[collected arrived_delivery])
               if holding.exists?
                 return render json: { error: "#{@driver.name} still has items from #{holding.count} collected job(s). Reassign those tasks before deactivating." },
                               status: :unprocessable_entity
               end
-              @driver.driver_tasks.where(status: %w[assigned started]).find_each do |task|
-                task.unassign!
+              @driver.driver_tasks.where(status: DriverTask::UNASSIGNABLE).find_each do |task|
+                task.unassign!(by: current_user)
                 unassigned += 1
               end
             end
@@ -63,23 +63,27 @@ module Api
 
         def load_driver = @driver = User.where(role: "driver").find(params[:id])
 
-        def account_params = params.require(:driver).permit(:name, :phone, :email, :username, :password, :active)
+        def account_params
+          params.require(:driver).permit(:first_name, :last_name, :phone, :email, :username, :password, :active, :licence_number,
+                                         :transmission, :passport_number, :visa_status, :visa_expiry, :bank_account_name,
+                                         :bank_sort_code, :bank_account_number)
+        end
 
         def driver_json(driver, counts = nil)
           counts ||= DriverTask.where(driver_id: driver.id).group(:driver_id, :status).count
           by_status = counts.select { |(id, _), _| id == driver.id }.transform_keys(&:last)
-          driver.as_json.merge(
-            open_tasks: by_status.slice("assigned", "started", "collected").values.sum,
+          driver.driver_profile_json(include_sensitive: current_user.admin?).merge(
+            open_tasks: by_status.slice(*(DriverTask::OPEN_STATUSES - ["unassigned"])).values.sum,
             completed_tasks: by_status.slice("closed", "completed").values.sum
           )
         end
 
         def task_summary(task)
           b = task.booking
-          task.as_json.except("proof").merge(
+          task.as_json.except("proofs", "events").merge(
             reference: b.reference, booking_status: b.status, route: "#{b.collection_postcode} → #{b.delivery_postcode}",
-            contact_name: task.collection? ? b.collection_contact_name : b.delivery_contact_name,
-            item: "#{b.quantity} × #{b.item_description}", has_proof: task.proof.present?
+            contact_name: task.current_side == "collection" ? b.collection_contact_name : b.delivery_contact_name,
+            item: "#{b.quantity} × #{b.item_description}", proof_kinds: task.proofs.map(&:kind)
           )
         end
       end

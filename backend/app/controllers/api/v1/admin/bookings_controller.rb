@@ -63,22 +63,19 @@ module Api
           kind = params.require(:kind)
           return render(json: { error: "Unknown task type" }, status: :unprocessable_entity) unless DriverTask::KINDS.include?(kind)
           driver = User.drivers.find(params.require(:driver_id))
-          task = kind == "collection" ? @booking.collection_task : @booking.delivery_task
+          task = { "collection" => @booking.collection_task, "delivery" => @booking.delivery_task, "direct" => @booking.direct_task }[kind]
 
           if task
             return render_booking if task.driver_id == driver.id
-            task.assign_to!(driver)
-            message = "#{kind.capitalize} task assigned to #{driver.name}"
+            task.assign_to!(driver, by: current_user)
           else
-            allowed = kind == "collection" ? %w[booked] : %w[in_warehouse in_transit failed_delivery]
-            unless allowed.include?(@booking.status)
-              hint = kind == "collection" ? "Confirm the booking (status Booked) before assigning the collection." : "Delivery tasks can be assigned once the items are at the warehouse."
-              return render json: { error: hint }, status: :unprocessable_entity
-            end
-            @booking.driver_tasks.create!(kind:, driver:)
+            error = task_creation_error(kind)
+            return render json: { error: }, status: :unprocessable_entity if error
+            task = @booking.driver_tasks.create!(kind:, driver:)
+            task.events.create!(action: "assigned", user: current_user, note: driver.name, occurred_at: Time.current)
             @booking.sync_driver!
-            message = "#{kind.capitalize} task assigned to #{driver.name}"
           end
+          message = "#{kind == 'direct' ? 'Direct collection & delivery' : kind.capitalize} task assigned to #{driver.name}"
           @booking.notes.create!(user: current_user, kind: "internal", body: message)
           render_booking
         rescue DriverTask::InvalidStep => e
@@ -88,7 +85,7 @@ module Api
         def unassign_task
           task = @booking.driver_tasks.find(params[:task_id])
           previous = task.driver&.name
-          task.unassign!
+          task.unassign!(by: current_user)
           @booking.notes.create!(user: current_user, kind: "internal", body: "#{task.kind.capitalize} task removed from #{previous}")
           render_booking
         rescue DriverTask::InvalidStep => e
@@ -128,6 +125,19 @@ module Api
         end
 
         private
+
+        # Why a new task of this kind can't be created yet (nil when it can).
+        def task_creation_error(kind)
+          case kind
+          when "collection", "direct"
+            return "Confirm the booking (status Booked) before assigning the collection." unless @booking.status == "booked"
+            other = kind == "collection" ? @booking.direct_task : @booking.collection_task
+            "This job already has a #{other.kind == 'direct' ? 'direct collection & delivery' : 'collection'} task." if other
+          when "delivery"
+            return "This job is handled as a direct collection & delivery." if @booking.direct_task
+            "Delivery tasks can be assigned once the items are at the depot." unless %w[in_warehouse in_transit failed_delivery].include?(@booking.status)
+          end
+        end
 
         def load_booking = @booking = Booking.find_by!(reference: params[:reference])
 

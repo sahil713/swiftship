@@ -97,7 +97,10 @@ else
 end
 
 def seed_user(email, name, role, phone, password)
-  User.find_by(email:) || User.create!(email:, name:, role:, phone:, password:)
+  User.find_by(email:) || User.create!(
+    email:, name:, role:, phone:, password:, first_name: name.split.first, last_name: name.split[1..].join(" "),
+    **(role == "driver" ? { licence_number: "DEMO#{rand(10**6)}", transmission: "manual" } : {})
+  )
 end
 
 admin = seed_user("admin@swiftship.example", "Alex Admin", "admin", "020 7946 0001", seed_password)
@@ -166,10 +169,13 @@ if Booking.none?
     if stage == "booked"
       booking.driver_tasks.create!(kind: "collection", driver:)
     else
+      demo_png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
       task = booking.driver_tasks.create!(kind: "collection", driver:)
-      task.record_collection!(user: driver, person_name: "Casey Customer", occurred_at: 1.day.ago,
-                              photos: ["data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="])
-      task.close_at_warehouse!(user: driver, note: "Bay 2")
+      task.start!(user: driver)
+      task.arrive!(user: driver)
+      task.record_collection!(user: driver, person_name: "Casey Customer", occurred_at: Time.current, photos: [demo_png])
+      task.close_at_depot!(user: driver, note: "Bay 2", person_name: "Depot team", occurred_at: Time.current,
+                           photos: [demo_png], signature_data: demo_png)
     end
     booking.sync_driver!
   end

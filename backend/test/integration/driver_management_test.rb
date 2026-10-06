@@ -9,7 +9,8 @@ class DriverManagementTest < ActionDispatch::IntegrationTest
   end
 
   def create_driver(attrs = {})
-    post "/api/v1/admin/drivers", params: { driver: { name: "Nina Driver", phone: "07700 900888", username: "nina", password: "drive-safe-1" }.merge(attrs) }, headers: @admin, as: :json
+    post "/api/v1/admin/drivers", params: { driver: { first_name: "Nina", last_name: "Driver", phone: "07700 900888", username: "nina", password: "drive-safe-1",
+                                                       licence_number: "DRIVE123456AB9CD", transmission: "automatic" }.merge(attrs) }, headers: @admin, as: :json
     json
   end
 
@@ -52,9 +53,9 @@ class DriverManagementTest < ActionDispatch::IntegrationTest
 
   test "admin edits details and resets the password" do
     driver = create_driver
-    patch "/api/v1/admin/drivers/#{driver['id']}", params: { driver: { name: "Nina D", phone: "07700 111222", email: "nina@example.com", password: "brand-new-pass" } }, headers: @admin, as: :json
+    patch "/api/v1/admin/drivers/#{driver['id']}", params: { driver: { last_name: "Dawson", phone: "07700 111222", email: "nina@example.com", password: "brand-new-pass" } }, headers: @admin, as: :json
     assert_response :success
-    assert_equal "Nina D", json["name"]
+    assert_equal "Nina Dawson", json["name"]
 
     post "/api/v1/auth/login", params: { email: "nina", password: "drive-safe-1" }, as: :json
     assert_response :unauthorized, "old password no longer works"
@@ -83,7 +84,11 @@ class DriverManagementTest < ActionDispatch::IntegrationTest
     driver = create_driver
     job = booked_job
     post "/api/v1/admin/bookings/#{job.reference}/assign_task", params: { kind: "collection", driver_id: driver["id"] }, headers: @admin, as: :json
-    job.reload.collection_task.record_collection!(user: User.find(driver["id"]), person_name: "Sender", occurred_at: Time.current, photos: [PHOTO])
+    nina = User.find(driver["id"])
+    task = job.reload.collection_task
+    task.start!(user: nina)
+    task.arrive!(user: nina)
+    task.record_collection!(user: nina, person_name: "Sender", occurred_at: Time.current, photos: [PHOTO])
 
     patch "/api/v1/admin/drivers/#{driver['id']}", params: { driver: { active: false } }, headers: @admin, as: :json
     assert_response :unprocessable_entity
@@ -131,22 +136,50 @@ class DriverManagementTest < ActionDispatch::IntegrationTest
     dan_headers = auth_headers(dan.email)
     post "/api/v1/driver/tasks/#{task.id}/start", headers: dan_headers, as: :json
     assert_equal "In Progress", json["status_label"]
+    post "/api/v1/driver/tasks/#{task.id}/arrive", headers: dan_headers, as: :json
     post "/api/v1/driver/tasks/#{task.id}/collect", params: { person_name: "Sender", photos: [PHOTO] }, headers: dan_headers, as: :json
     assert_equal "Collected", json["status_label"]
     post "/api/v1/admin/tasks/#{task.id}/unassign", headers: @admin, as: :json
     assert_response :unprocessable_entity, "can't unassign once the driver has the items"
-    post "/api/v1/driver/tasks/#{task.id}/close", headers: dan_headers, as: :json
-    assert_equal "At Warehouse", json["status_label"]
+    post "/api/v1/driver/tasks/#{task.id}/close", params: { person_name: "Depot", photos: [PHOTO], signature_data: "data:image/png;base64,iVBORw0KGgo=" }, headers: dan_headers, as: :json
+    assert_equal "At Depot", json["status_label"]
 
     delivery = job.reload.delivery_task
     post "/api/v1/driver/tasks/#{delivery.id}/start", headers: dan_headers, as: :json
     assert_equal "Out for Delivery", json["status_label"]
-    post "/api/v1/driver/tasks/#{delivery.id}/proof", params: { person_name: "Recv", photos: [PHOTO], signature_data: "data:image/png;base64,iVBORw0KGgo=" }, headers: dan_headers, as: :json
+    post "/api/v1/driver/tasks/#{delivery.id}/arrive", headers: dan_headers, as: :json
+    post "/api/v1/driver/tasks/#{delivery.id}/proof", params: { person_name: "Recv", photos: [PHOTO, PHOTO], signature_data: "data:image/png;base64,iVBORw0KGgo=" }, headers: dan_headers, as: :json
     post "/api/v1/driver/tasks/#{delivery.id}/complete", headers: dan_headers, as: :json
     assert_equal "Completed", json["status_label"]
 
     get "/api/v1/admin/drivers/#{dan.id}", headers: @admin
     statuses = json["tasks"].select { _1["reference"] == job.reference }.map { _1["status_label"] }
-    assert_equal ["Completed", "At Warehouse"], statuses
+    assert_equal ["Completed", "At Depot"], statuses
+  end
+
+  test "driver profile: required details, encrypted sensitive fields, admin-only visibility" do
+    post "/api/v1/admin/drivers", params: { driver: { first_name: "No", last_name: "Licence", phone: "07700 900111", username: "nolicence", password: "password99" } }, headers: @admin, as: :json
+    assert_response :unprocessable_entity
+    assert_match(/Licence number|Transmission/i, json["error"])
+
+    driver = create_driver(username: "full1", passport_number: "123456789", visa_status: "Skilled Worker visa", visa_expiry: "2027-05-31",
+                           bank_account_name: "Nina Driver", bank_sort_code: "12-34-56", bank_account_number: "12345678")
+    assert_response :created
+    assert_equal "Nina Driver", driver["name"]
+    assert_equal "automatic", driver["transmission"]
+    assert_equal "12345678", driver["bank_account_number"]
+
+    raw = User.connection.select_one("SELECT licence_number, bank_account_number, passport_number FROM users WHERE id = #{driver['id']}")
+    refute_includes raw.values.join, "12345678", "bank account number must be encrypted at rest"
+    refute_includes raw.values.join, "DRIVE123456AB9CD", "licence number must be encrypted at rest"
+
+    get "/api/v1/admin/drivers/#{driver['id']}", headers: auth_headers("ops@swiftship.example")
+    refute json["driver"].key?("bank_account_number"), "operations staff don't see bank details"
+    refute json["driver"].key?("passport_number")
+
+    post "/api/v1/admin/drivers", params: { driver: { first_name: "Bad", last_name: "Bank", phone: "07700 900111", username: "badbank", password: "password99",
+                                                       licence_number: "X1", transmission: "manual", bank_sort_code: "12345" } }, headers: @admin, as: :json
+    assert_response :unprocessable_entity
+    assert_match(/sort code/i, json["error"])
   end
 end

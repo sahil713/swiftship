@@ -87,6 +87,12 @@ class Booking < ApplicationRecord
 
   def collection_task = driver_tasks.where(kind: "collection").where.not(status: "cancelled").last
   def delivery_task = driver_tasks.where(kind: "delivery").where.not(status: "cancelled").last
+  def direct_task = driver_tasks.where(kind: "direct").where.not(status: "cancelled").last
+
+  # The task holding the proof of delivery: the delivery leg, or a direct job.
+  def delivery_proof
+    [delivery_task, direct_task].compact.filter_map { _1.proof_of("delivery") }.first
+  end
 
   # Keeps bookings.driver pointing at whoever currently holds the job (for lists and filters).
   def sync_driver!
@@ -169,7 +175,7 @@ class Booking < ApplicationRecord
       payments: payments.map(&:as_json),
       change_requests: change_requests.map(&:as_json),
       proof_of_delivery: proof_of_delivery&.as_json,
-      tasks: driver_tasks.includes(:driver, proof: :user).map(&:as_json)
+      tasks: driver_tasks.includes(:driver, proofs: :user, events: :user).map(&:as_json)
     )
     if staff
       data.merge!(
@@ -190,7 +196,7 @@ class Booking < ApplicationRecord
       to: "#{delivery_city}, #{delivery_postcode.split.first}",
       collection_date:, estimated_delivery_date:, delivered_at:,
       events: status_events.where(customer_visible: true).map { _1.as_json.except("by", :by) },
-      delivered_to: delivery_task&.proof&.person_name || proof_of_delivery&.recipient_name
+      delivered_to: delivery_proof&.person_name || proof_of_delivery&.recipient_name
     }
   end
 

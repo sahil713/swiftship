@@ -42,3 +42,15 @@ export const humanize = (s) => (s ? s.replace(/_/g, " ").replace(/^\w/, (c) => c
 
 export const penceFromPounds = (v) => Math.round(parseFloat(v || 0) * 100);
 export const poundsFromPence = (p) => (p === null || p === undefined ? "" : (p / 100).toFixed(2));
+
+/** Human-friendly duration, e.g. 3725 → "1 h 2 min". */
+export const duration = (seconds) => {
+  if (seconds === null || seconds === undefined) return "—";
+  if (seconds < 60) return "under 1 min";
+  const mins = Math.round(seconds / 60);
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return h ? `${h} h${m ? ` ${m} min` : ""}` : `${m} min`;
+};
+
+export const TASK_KIND_LABELS = { collection: "Collection", delivery: "Delivery", direct: "Collect & deliver" };

@@ -183,7 +183,7 @@ export default function OrderPage({ embedded = false }) {
           </div>
 
           {(() => {
-            const pod = [...(b.tasks || [])].reverse().find((t) => t.kind === "delivery" && t.status === "completed")?.proof;
+            const pod = [...(b.tasks || [])].reverse().find((t) => ["delivery", "direct"].includes(t.kind) && t.status === "completed")?.proofs?.delivery;
             return pod ? <div className="card"><h3>Proof of delivery</h3><ProofView proof={{ ...pod, recorded_by: undefined }} kind="delivery" /></div> : null;
           })()}
           {b.proof_of_delivery && (

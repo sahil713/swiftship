@@ -6,19 +6,20 @@ import { Modal } from "./ui.jsx";
 export default function ProofView({ proof, kind }) {
   const [open, setOpen] = useState(null);
   if (!proof) return null;
-  const isCollection = kind === "collection";
+  const personLabel = { collection: "Handed over by", depot: "Checked in by", delivery: "Received by" }[kind];
+  const timeLabel = { collection: "Collected", depot: "At depot", delivery: "Delivered" }[kind];
   return (
     <div className="stack" style={{ "--gap": "10px" }}>
       <dl className="detail-list">
-        <div><dt>{isCollection ? "Handed over by" : "Received by"}</dt><dd>{proof.person_name}</dd></div>
-        <div><dt>{isCollection ? "Collected" : "Delivered"}</dt><dd>{dateTime(proof.occurred_at)}</dd></div>
+        <div><dt>{personLabel}</dt><dd>{proof.person_name}</dd></div>
+        <div><dt>{timeLabel}</dt><dd>{dateTime(proof.occurred_at)}</dd></div>
         {proof.notes && <div><dt>Notes</dt><dd>{proof.notes}</dd></div>}
         {proof.recorded_by && <div><dt>Recorded by</dt><dd>{proof.recorded_by}</dd></div>}
       </dl>
       {proof.photos?.length > 0 && (
         <div className="proof-gallery" aria-label="Photos">
           {proof.photos.map((p, i) => (
-            <a key={i} href="#photo" onClick={(e) => { e.preventDefault(); setOpen(p); }}><img src={p} alt={`${isCollection ? "Collection" : "Delivery"} photo ${i + 1}`} /></a>
+            <a key={i} href="#photo" onClick={(e) => { e.preventDefault(); setOpen(p); }}><img src={p} alt={`${timeLabel} photo ${i + 1}`} /></a>
           ))}
         </div>
       )}

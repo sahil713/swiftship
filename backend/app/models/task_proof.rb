@@ -1,5 +1,11 @@
-# Proof of Collection (POC) or Proof of Delivery (POD), kept against the job for reference.
+# Proofs a driver records on a task, kept against the job:
+#   collection – Proof of Collection (POC): at least 1 photo, signature optional
+#   depot      – items checked in at the depot: at least 1 photo and a signature
+#   delivery   – Proof of Delivery (POD): at least 2 photos and the recipient's signature
 class TaskProof < ApplicationRecord
+  KINDS = %w[collection depot delivery].freeze
+  MIN_PHOTOS = { "collection" => 1, "depot" => 1, "delivery" => 2 }.freeze
+  SIGNATURE_REQUIRED = %w[depot delivery].freeze
   MAX_PHOTOS = 8
   MAX_IMAGE_BYTES = 2.megabytes
   IMAGE_PREFIXES = ["data:image/png;base64,", "data:image/jpeg;base64,", "data:image/webp;base64,"].freeze
@@ -7,16 +13,13 @@ class TaskProof < ApplicationRecord
   belongs_to :driver_task
   belongs_to :user, optional: true
 
-  validates :kind, inclusion: { in: DriverTask::KINDS }
+  validates :kind, inclusion: { in: KINDS }, uniqueness: { scope: :driver_task_id }
   validates :person_name, :occurred_at, presence: true
+  validate :enough_photos
   validate :photos_are_images
-  validate :signature_is_image
-  validate :collection_has_photo, if: -> { kind == "collection" }
+  validate :signature_present_and_valid
 
   before_validation { self.photos = Array(photos).compact_blank }
-
-  # A delivery can only be completed with the full POD: name, date/time, signature and a photo.
-  def complete_for_delivery? = person_name.present? && occurred_at.present? && signature_data.present? && photos.any?
 
   def as_json(*)
     slice(:id, :kind, :person_name, :occurred_at, :notes, :signature_data, :photos, :created_at)
@@ -25,8 +28,9 @@ class TaskProof < ApplicationRecord
 
   private
 
-  def collection_has_photo
-    errors.add(:photos, "– add at least one photo of the collected items") if photos.empty?
+  def enough_photos
+    min = MIN_PHOTOS.fetch(kind, 1)
+    errors.add(:photos, "– add at least #{min} photo#{'s' if min > 1}") if photos.size < min
   end
 
   def photos_are_images
@@ -34,8 +38,12 @@ class TaskProof < ApplicationRecord
     photos.each { |photo| validate_image(:photos, photo) }
   end
 
-  def signature_is_image
-    validate_image(:signature_data, signature_data) if signature_data.present?
+  def signature_present_and_valid
+    if signature_data.blank?
+      errors.add(:signature_data, "– a signature is required") if SIGNATURE_REQUIRED.include?(kind)
+    else
+      validate_image(:signature_data, signature_data)
+    end
   end
 
   def validate_image(attr, value)

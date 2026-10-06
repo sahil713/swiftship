@@ -3,14 +3,15 @@ import { Link } from "react-router-dom";
 import { UserMinus } from "lucide-react";
 import { api } from "../../lib/api.js";
 import { useApi } from "../../lib/hooks.js";
-import { dateTime } from "../../lib/format.js";
+import { dateTime, duration, TASK_KIND_LABELS } from "../../lib/format.js";
 import { Badge, Empty, Pagination, Spinner } from "../../components/ui.jsx";
 import { useToast } from "../../components/Toast.jsx";
 import { TASK_TONE } from "./Drivers.jsx";
 
 const STATUS_OPTIONS = [
   ["open", "All open tasks"], ["unassigned", "Unassigned"], ["assigned", "Assigned"], ["started", "In progress / out for delivery"],
-  ["collected", "Collected"], ["closed", "At warehouse"], ["completed", "Completed"], ["all", "Everything"],
+  ["arrived", "Arrived at collection / delivery"], ["collected", "Collected"], ["arrived_delivery", "Arrived at delivery (direct)"],
+  ["closed", "At depot"], ["completed", "Completed"], ["all", "Everything"],
 ];
 
 /** Every collection and delivery task, with assign / reassign / unassign controls. */
@@ -43,7 +44,7 @@ export default function Tasks() {
       <div className="toolbar">
         <select className="select" aria-label="Status" value={filters.status} onChange={set("status")}>{STATUS_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
         <select className="select" aria-label="Task type" value={filters.kind} onChange={set("kind")}>
-          <option value="">Collections & deliveries</option><option value="collection">Collections</option><option value="delivery">Deliveries</option>
+          <option value="">All task types</option><option value="collection">Collections</option><option value="delivery">Deliveries</option><option value="direct">Collect & deliver (direct)</option>
         </select>
         <select className="select" aria-label="Driver" value={filters.driver_id} onChange={set("driver_id")}>
           <option value="">All drivers</option><option value="none">No driver</option>
@@ -54,14 +55,15 @@ export default function Tasks() {
         <>
           <div className="table-wrap">
             <table className="table">
-              <thead><tr><th>Job</th><th>Task</th><th>Where</th><th>Driver</th><th>Status</th><th>Proof</th><th>Updated</th><th><span className="sr-only">Actions</span></th></tr></thead>
+              <thead><tr><th>Job</th><th>Task</th><th>Where</th><th>Driver</th><th>Status</th><th>Proof</th><th>Time taken</th><th><span className="sr-only">Actions</span></th></tr></thead>
               <tbody>
                 {data.tasks.map((t) => {
-                  const editable = ["unassigned", "assigned", "started", "collected"].includes(t.status);
+                  const editable = ["unassigned", "assigned", "started", "arrived", "collected", "arrived_delivery"].includes(t.status);
+                  const proofKinds = Object.keys(t.proofs || {});
                   return (
                     <tr key={t.id}>
                       <td><Link to={`/admin/bookings/${t.reference}`} className="mono">{t.reference}</Link></td>
-                      <td style={{ textTransform: "capitalize" }}>{t.kind}<div className="small muted" style={{ textTransform: "none" }}>{t.item}</div></td>
+                      <td>{TASK_KIND_LABELS[t.kind]}<div className="small muted">{t.item}</div></td>
                       <td>{t.contact_name}<div className="small muted">{t.city} <span className="mono">{t.postcode}</span></div></td>
                       <td>
                         {editable ? (
@@ -74,9 +76,9 @@ export default function Tasks() {
                         ) : (t.driver?.name || "—")}
                       </td>
                       <td><Badge tone={TASK_TONE[t.status]}>{t.status_label}</Badge></td>
-                      <td className="small">{t.proof ? <>{t.kind === "collection" ? "POC" : "POD"} ✓ · {t.proof.person_name}<div className="muted">{t.proof.photo_count} photo{t.proof.photo_count === 1 ? "" : "s"}{t.proof.signed ? " · signed" : ""}</div></> : <span className="muted">—</span>}</td>
-                      <td className="small muted">{dateTime(t.completed_at || t.closed_at || t.collected_at || t.started_at || t.created_at)}</td>
-                      <td>{["assigned", "started"].includes(t.status) && <button className="btn btn-ghost btn-sm" title="Remove from driver" disabled={busy === t.id} onClick={() => window.confirm(`Remove ${t.driver?.name} from this ${t.kind}?`) && act(t, "unassign", undefined, "Task unassigned")}><UserMinus size={14} /> Unassign</button>}</td>
+                      <td className="small">{proofKinds.length ? proofKinds.map((k) => <div key={k}>{{ collection: "POC", depot: "Depot", delivery: "POD" }[k]} ✓ <span className="muted">{t.proofs[k].photo_count} photo{t.proofs[k].photo_count === 1 ? "" : "s"}{t.proofs[k].signed ? " · signed" : ""}</span></div>) : <span className="muted">—</span>}</td>
+                      <td className="small">{t.timings?.total_seconds != null ? <strong>{duration(t.timings.total_seconds)}</strong> : t.timings?.running_since ? <span className="muted">running since {dateTime(t.timings.running_since)}</span> : <span className="muted">not started</span>}</td>
+                      <td>{["assigned", "started", "arrived"].includes(t.status) && <button className="btn btn-ghost btn-sm" title="Remove from driver" disabled={busy === t.id} onClick={() => window.confirm(`Remove ${t.driver?.name} from this ${t.kind}?`) && act(t, "unassign", undefined, "Task unassigned")}><UserMinus size={14} /> Unassign</button>}</td>
                     </tr>
                   );
                 })}

@@ -3,12 +3,12 @@ import { Link, useParams } from "react-router-dom";
 import { ArrowLeft, ExternalLink, Calculator, StickyNote, Mail, MessageSquareText } from "lucide-react";
 import { api } from "../../lib/api.js";
 import { useApi } from "../../lib/hooks.js";
-import { date, dateTime, humanize, money, penceFromPounds, poundsFromPence, STATUS_LABELS } from "../../lib/format.js";
+import { date, dateTime, humanize, money, penceFromPounds, poundsFromPence, STATUS_LABELS, TASK_KIND_LABELS } from "../../lib/format.js";
 import { Alert, Badge, Field, Modal, Spinner, StatusBadge } from "../../components/ui.jsx";
 import { EventTimeline } from "../../components/StatusTimeline.jsx";
 import { useToast } from "../../components/Toast.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
-import ProofView from "../../components/ProofView.jsx";
+import { TaskEvents, TaskProofs, TaskTimings } from "../../components/TaskRecord.jsx";
 
 const NOTE_KINDS = { internal: "Internal note", collection_issue: "Collection issue", delivery_issue: "Delivery issue", damage: "Damage report" };
 
@@ -287,72 +287,68 @@ function EditForm({ booking, onSave, busy }) {
   );
 }
 
-const TASK_TONE = { unassigned: "critical", assigned: "warning", started: "accent", collected: "info", closed: "good", completed: "good", cancelled: "muted" };
+const TASK_TONE = { unassigned: "critical", assigned: "warning", started: "accent", arrived: "accent", collected: "info", arrived_delivery: "accent", closed: "good", completed: "good", cancelled: "muted" };
 
-/** Collection and delivery tasks for the job, with assignment and the drivers' POC / POD records. */
+/** The job's driver tasks: assignment, step log with timings, and the drivers' proofs. */
 function DriverTasks({ booking: b, drivers, act, busy }) {
-  const tasks = b.tasks || [];
-  const live = (kind) => [...tasks].reverse().find((t) => t.kind === kind && t.status !== "cancelled");
-  const canCreate = { collection: b.status === "booked", delivery: ["in_warehouse", "in_transit", "failed_delivery"].includes(b.status) };
-  const hint = {
-    collection: b.status === "quote_requested" || b.status === "awaiting_payment" ? "Mark the booking as Booked (price agreed) to assign the collection." : null,
-    delivery: "Created automatically when the driver closes the collection at the warehouse.",
-  };
+  const tasks = (b.tasks || []).filter((t) => t.status !== "cancelled");
+  const has = (kind) => tasks.some((t) => t.kind === kind);
+  const canStart = b.status === "booked" && !has("collection") && !has("direct");
+  const canDeliver = !has("direct") && !has("delivery") && ["in_warehouse", "in_transit", "failed_delivery"].includes(b.status);
 
-  const block = (kind) => {
-    const t = live(kind);
-    const title = kind === "collection" ? "Collection task" : "Delivery task";
-    return (
-      <div key={kind} style={{ borderTop: kind === "delivery" ? "1px solid var(--border)" : 0, paddingTop: kind === "delivery" ? 16 : 0 }}>
-        <div className="row-between" style={{ marginBottom: 10 }}>
-          <strong>{title}</strong>
-          {t && <Badge tone={TASK_TONE[t.status]}>{t.status_label}</Badge>}
-        </div>
-        {t ? (
-          <div className="stack">
-            <div className="row" style={{ gap: 8 }}>
-              <label className="small muted" htmlFor={`drv-${kind}`}>Driver</label>
-              <select id={`drv-${kind}`} className="select" style={{ maxWidth: 240, minHeight: 38 }} value={t.driver?.id || ""} disabled={busy || !["unassigned", "assigned", "started", "collected"].includes(t.status)}
-                onChange={(e) => e.target.value && act("/assign_task", { kind, driver_id: e.target.value }, t.driver ? "Task reassigned" : "Task assigned")}>
-                {!t.driver && <option value="">Choose driver…</option>}
-                {t.driver && !drivers.some((d) => d.id === t.driver.id) && <option value={t.driver.id}>{t.driver.name}</option>}
-                {drivers.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-              </select>
-              {["assigned", "started"].includes(t.status) && <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => window.confirm(`Remove ${t.driver?.name} from this ${kind} task?`) && act(`/tasks/${t.id}/unassign`, {}, "Task unassigned")}>Unassign</button>}
-            </div>
-            <div className="small muted">
-              Assigned {dateTime(t.created_at)}
-              {t.collected_at && ` · collected ${dateTime(t.collected_at)}`}
-              {t.closed_at && ` · in warehouse ${dateTime(t.closed_at)}`}
-              {t.started_at && ` · on the way ${dateTime(t.started_at)}`}
-              {t.completed_at && ` · completed ${dateTime(t.completed_at)}`}
-            </div>
-            {t.warehouse_note && <div className="small">Warehouse note: <strong>{t.warehouse_note}</strong></div>}
-            {t.proof ? (
-              <div style={{ background: "var(--bg-subtle)", borderRadius: 12, padding: 14 }}>
-                <div className="small" style={{ fontWeight: 700, marginBottom: 8 }}>{kind === "collection" ? "Proof of Collection (POC)" : "Proof of Delivery (POD)"}</div>
-                <ProofView proof={t.proof} kind={kind} />
-              </div>
-            ) : <p className="small muted" style={{ margin: 0 }}>No {kind === "collection" ? "proof of collection" : "proof of delivery"} yet.</p>}
-          </div>
-        ) : canCreate[kind] ? (
-          <div className="row">
-            <select className="select" aria-label={`Driver for ${kind}`} defaultValue="" style={{ maxWidth: 240, minHeight: 38 }} disabled={busy}
-              onChange={(e) => e.target.value && act("/assign_task", { kind, driver_id: e.target.value }, `${title} assigned`)}>
-              <option value="">Assign to driver…</option>
-              {drivers.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-            </select>
-          </div>
-        ) : <p className="small muted" style={{ margin: 0 }}>{hint[kind] || "Not available at this stage."}</p>}
-      </div>
-    );
-  };
+  const assignSelect = (kind, label) => (
+    <div className="field" key={kind}>
+      <label className="small" htmlFor={`new-${kind}`}><strong>{label}</strong></label>
+      <select id={`new-${kind}`} className="select" defaultValue="" style={{ maxWidth: 260, minHeight: 38 }} disabled={busy}
+        onChange={(e) => e.target.value && act("/assign_task", { kind, driver_id: e.target.value }, `${label} assigned`)}>
+        <option value="">Assign to driver…</option>
+        {drivers.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+      </select>
+    </div>
+  );
 
   return (
     <div className="card stack">
       <h3 style={{ margin: 0 }}>Driver tasks</h3>
-      {block("collection")}
-      {block("delivery")}
+      {tasks.length === 0 && !canStart && (
+        <p className="small muted" style={{ margin: 0 }}>{["quote_requested", "awaiting_payment"].includes(b.status) ? "Mark the booking as Booked (price agreed) to assign a driver." : "No driver tasks for this job."}</p>
+      )}
+      {canStart && (
+        <div className="stack" style={{ background: "var(--bg-subtle)", borderRadius: 12, padding: 14 }}>
+          <p className="small muted" style={{ margin: 0 }}>Choose how this job runs:</p>
+          <div className="form-grid">
+            {assignSelect("collection", "Collection via depot")}
+            {assignSelect("direct", "Direct collect & deliver")}
+          </div>
+          <p className="small muted" style={{ margin: 0 }}>Via depot: the driver drops the items at the depot and a separate delivery task follows. Direct: one task from collection straight to delivery.</p>
+        </div>
+      )}
+      {tasks.map((t) => (
+        <div key={t.id} className="stack" style={{ borderTop: "1px solid var(--border)", paddingTop: 14 }}>
+          <div className="row-between">
+            <strong>{TASK_KIND_LABELS[t.kind]} task</strong>
+            <Badge tone={TASK_TONE[t.status]}>{t.status_label}</Badge>
+          </div>
+          <div className="row" style={{ gap: 8 }}>
+            <label className="small muted" htmlFor={`drv-${t.id}`}>Driver</label>
+            <select id={`drv-${t.id}`} className="select" style={{ maxWidth: 240, minHeight: 38 }} value={t.driver?.id || ""} disabled={busy || !["unassigned", "assigned", "started", "arrived", "collected", "arrived_delivery"].includes(t.status)}
+              onChange={(e) => e.target.value && act("/assign_task", { kind: t.kind, driver_id: e.target.value }, t.driver ? "Task reassigned" : "Task assigned")}>
+              {!t.driver && <option value="">Choose driver…</option>}
+              {t.driver && !drivers.some((d) => d.id === t.driver.id) && <option value={t.driver.id}>{t.driver.name}</option>}
+              {drivers.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+            </select>
+            {["assigned", "started", "arrived"].includes(t.status) && <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => window.confirm(`Remove ${t.driver?.name} from this task?`) && act(`/tasks/${t.id}/unassign`, {}, "Task unassigned")}>Unassign</button>}
+          </div>
+          <TaskTimings timings={t.timings} />
+          {t.warehouse_note && <div className="small">Depot note: <strong>{t.warehouse_note}</strong></div>}
+          <details>
+            <summary className="small" style={{ cursor: "pointer", fontWeight: 600 }}>Step log ({t.events?.length || 0})</summary>
+            <div style={{ marginTop: 8 }}><TaskEvents events={t.events} /></div>
+          </details>
+          <TaskProofs proofs={t.proofs} />
+        </div>
+      ))}
+      {canDeliver && assignSelect("delivery", "Delivery task")}
     </div>
   );
 }

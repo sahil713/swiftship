@@ -65,7 +65,9 @@ Rails.application.routes.draw do
       namespace :driver do
         resources :tasks, only: %i[index show] do
           member do
+            post :arrive
             post :collect
+            post :arrive_delivery
             post :close
             post :start
             post :proof
