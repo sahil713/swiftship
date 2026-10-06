@@ -67,13 +67,22 @@ export function Reveal({ children, delay = 0, y = 28, className, as = "div" }) {
 
 export function Modal({ open, onClose, title, children }) {
   const ref = useRef(null);
+  // Parents usually pass a new onClose on every render; keep the latest in a ref so the
+  // effects below only run when the modal opens (re-running them stole focus while typing).
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
   useEffect(() => {
     if (!open) return;
-    const onKey = (e) => e.key === "Escape" && onClose();
+    const onKey = (e) => e.key === "Escape" && onCloseRef.current();
     document.addEventListener("keydown", onKey);
-    ref.current?.querySelector("input, textarea, select, button")?.focus();
     return () => document.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  }, [open]);
+
+  // Focus the first form field once, when the modal opens.
+  useEffect(() => {
+    if (open) ref.current?.querySelector(".modal-body input:not([type=hidden]), .modal-body textarea, .modal-body select")?.focus();
+  }, [open]);
   if (!open) return null;
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
@@ -82,7 +91,7 @@ export function Modal({ open, onClose, title, children }) {
           <h3 style={{ margin: 0 }}>{title}</h3>
           <button className="btn btn-ghost btn-sm" onClick={onClose}>Close</button>
         </div>
-        {children}
+        <div className="modal-body">{children}</div>
       </motion.div>
     </div>
   );
