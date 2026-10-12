@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_10_06_000008) do
+ActiveRecord::Schema[8.0].define(version: 2026_10_12_000001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -98,6 +98,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_06_000008) do
     t.text "special_requirements"
     t.boolean "area_review", default: false, null: false
     t.text "area_review_notes"
+    t.string "collection_time"
     t.index ["area_review"], name: "index_bookings_on_area_review"
     t.index ["customer_email"], name: "index_bookings_on_customer_email"
     t.index ["driver_id"], name: "index_bookings_on_driver_id"
@@ -170,6 +171,8 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_06_000008) do
     t.datetime "arrived_delivery_at"
     t.datetime "delivered_at"
     t.datetime "at_depot_at"
+    t.datetime "scheduled_for"
+    t.text "instructions"
     t.index ["booking_id", "kind"], name: "index_driver_tasks_on_booking_id_and_kind"
     t.index ["booking_id"], name: "index_driver_tasks_on_booking_id"
     t.index ["driver_id", "status"], name: "index_driver_tasks_on_driver_id_and_status"
@@ -201,6 +204,21 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_06_000008) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["booking_id"], name: "index_notifications_on_booking_id"
+  end
+
+  create_table "payment_methods", force: :cascade do |t|
+    t.string "name", null: false
+    t.string "bank_name"
+    t.string "account_name"
+    t.string "account_number"
+    t.string "sort_code"
+    t.string "iban"
+    t.string "swift_bic"
+    t.text "instructions"
+    t.boolean "active", default: true, null: false
+    t.integer "position", default: 0, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
   end
 
   create_table "payments", force: :cascade do |t|

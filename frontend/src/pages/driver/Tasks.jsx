@@ -40,7 +40,8 @@ export default function Tasks({ completed = false }) {
                   <div className="addr"><MapPin size={14} style={{ display: "inline", verticalAlign: -2 }} /> {t.address.line1}, {t.address.city} <strong className="mono">{t.address.postcode}</strong></div>
                   <div className="small muted" style={{ marginTop: 6 }}>
                     <Phone size={13} style={{ display: "inline", verticalAlign: -2 }} /> {t.contact_phone}
-                    {t.date && <> · <Calendar size={13} style={{ display: "inline", verticalAlign: -2 }} /> {date(t.date, { weekday: "short", day: "numeric", month: "short" })}</>}
+                    {t.scheduled_for ? <> · <Calendar size={13} style={{ display: "inline", verticalAlign: -2 }} /> {new Date(t.scheduled_for).toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</>
+                      : t.date && <> · <Calendar size={13} style={{ display: "inline", verticalAlign: -2 }} /> {date(t.date, { weekday: "short", day: "numeric", month: "short" })}</>}
                   </div>
                   <div className="small" style={{ marginTop: 6, color: "var(--text-2)" }}>{t.item.quantity} × {t.item.description}{t.item.fragile ? " · Fragile" : ""}</div>
                 </div>

@@ -36,7 +36,14 @@ class Booking < ApplicationRecord
 
   ACTIVE_JOB_STATUSES = %w[booked collected in_warehouse in_transit out_for_delivery failed_delivery exception].freeze
   NOTIFY_STATUSES = %w[awaiting_payment booked collected out_for_delivery delivered failed_delivery exception cancelled].freeze
-  PAYMENT_STATUSES = %w[unpaid paid partially_refunded refunded].freeze
+  # "unpaid" is shown as Pending. Refund statuses are also set by the refund action.
+  PAYMENT_STATUSES = %w[unpaid partially_paid paid failed partially_refunded refunded cancelled].freeze
+  PAYMENT_STATUS_LABELS = {
+    "unpaid" => "Pending", "partially_paid" => "Partially paid", "paid" => "Paid", "failed" => "Failed",
+    "partially_refunded" => "Partially refunded", "refunded" => "Refunded", "cancelled" => "Cancelled"
+  }.freeze
+  # Payment statuses that become Paid automatically when the booking is marked Booked.
+  AUTO_PAID_FROM = %w[unpaid partially_paid failed].freeze
 
   belongs_to :user, optional: true
   belongs_to :service
@@ -90,6 +97,22 @@ class Booking < ApplicationRecord
   def delivery_task = driver_tasks.where(kind: "delivery").where.not(status: "cancelled").last
   def direct_task = driver_tasks.where(kind: "direct").where.not(status: "cancelled").last
 
+  # Why a new driver task of this kind can't be created yet (nil when it can).
+  def task_creation_error(kind)
+    case kind
+    when "collection", "direct"
+      return "Mark the booking as Booked before assigning the collection." unless status == "booked"
+      other = kind == "collection" ? direct_task : collection_task
+      "This job already has a #{other.kind == 'direct' ? 'collection + delivery' : 'collection'} task." if other
+    when "delivery"
+      return "This job is handled as a collection + delivery task." if direct_task
+      return "This job already has a delivery task." if delivery_task
+      "Delivery tasks can be assigned once the items are at the depot." unless %w[in_warehouse in_transit failed_delivery].include?(status)
+    else
+      "Unknown task type"
+    end
+  end
+
   # The task holding the proof of delivery: the delivery leg, or a direct job.
   def delivery_proof
     [delivery_task, direct_task].compact.filter_map { _1.proof_of("delivery") }.first
@@ -118,6 +141,16 @@ class Booking < ApplicationRecord
 
   # Moves the booking to a new status, recording a timestamped history event and
   # notifying the customer when the change is one they care about.
+  # Manual payment status change by the office, kept in the audit log.
+  def set_payment_status!(new_status, user:, reason: nil)
+    raise ArgumentError, "Unknown payment status" unless PAYMENT_STATUSES.include?(new_status)
+    return if payment_status == new_status
+    old = payment_status
+    update!(payment_status: new_status)
+    AuditLog.record!(self, user:, action: "payment_status_changed", reason:,
+                     changes: { "payment_status" => [PAYMENT_STATUS_LABELS[old], PAYMENT_STATUS_LABELS[new_status]] })
+  end
+
   def transition_to!(new_status, user: nil, note: nil, location: nil, customer_visible: true, force: false)
     new_status = new_status.to_s
     raise ArgumentError, "Unknown status #{new_status}" unless STATUSES.include?(new_status)
@@ -129,9 +162,17 @@ class Booking < ApplicationRecord
     transaction do
       self.status = new_status
       self.booked_at ||= Time.current if new_status == "booked"
+      # Business rule: a quote that becomes Booked is paid.
+      auto_paid = new_status == "booked" && AUTO_PAID_FROM.include?(payment_status)
+      old_payment = payment_status
+      self.payment_status = "paid" if auto_paid
       self.delivered_at = Time.current if new_status == "delivered"
       save!
       status_events.create!(status: new_status, user:, note:, location:, customer_visible:)
+      if auto_paid
+        AuditLog.record!(self, user:, action: "payment_status_changed", reason: "Set automatically when the booking was marked Booked",
+                         changes: { "payment_status" => [PAYMENT_STATUS_LABELS[old_payment], "Paid"] })
+      end
       driver_tasks.open.update_all(status: "cancelled", updated_at: Time.current) if new_status == "cancelled"
     end
     BookingNotifier.status_changed(self, note:) if NOTIFY_STATUSES.include?(new_status)
@@ -154,11 +195,11 @@ class Booking < ApplicationRecord
   def summary_json
     {
       reference:, tracking_number:, status:, status_label: self.class.status_label(status),
-      payment_status:, service: service.slice(:id, :name, :slug),
+      payment_status:, payment_status_label: PAYMENT_STATUS_LABELS[payment_status], service: service.slice(:id, :name, :slug),
       collection_city:, collection_postcode:, delivery_city:, delivery_postcode:,
       item_description:, quantity:, price_pence:, confirmed_price_pence:, estimated_price_pence:,
-      collection_date:, estimated_delivery_date:, created_at:, updated_at:,
-      customer_email:, driver: driver&.slice(:id, :name), area_review:
+      collection_date:, collection_time:, estimated_delivery_date:, created_at:, updated_at:,
+      customer_email:, customer_name: user&.name || collection_contact_name, driver: driver&.slice(:id, :name), area_review:
     }
   end
 
@@ -168,7 +209,7 @@ class Booking < ApplicationRecord
         collection_contact_name collection_phone collection_email collection_line1 collection_line2
         delivery_contact_name delivery_phone delivery_email delivery_line1 delivery_line2
         weight_kg length_cm width_cm height_cm fragile collection_instructions delivery_instructions
-        special_requirements price_breakdown price_confirmed_at booked_at delivered_at
+        special_requirements price_breakdown price_confirmed_at booked_at delivered_at collection_time
       ]),
       payable: payable?,
       cancellable: cancellable_by_customer?,

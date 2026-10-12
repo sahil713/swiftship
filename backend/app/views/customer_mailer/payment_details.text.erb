@@ -1,0 +1,16 @@
+Hello <%= @customer_name %>,
+
+Here are the details to pay for your booking <%= @booking.reference %>.
+<% if @amount_pence %>
+Amount due: <%= Money.format(@amount_pence) %>
+<% end %>
+<%= @method.name.upcase %>
+<% @method.detail_lines(reference: @booking.reference).each do |label, value| %>  <%= label %>: <%= value %>
+<% end %><% if @method.instructions.present? %>
+<%= @method.instructions %>
+<% end %><% if @message.present? %>
+<%= @message %>
+<% end %>
+Please use <%= @booking.reference %> as your payment reference. Reply to this email if you have any questions.
+
+— <%= ApplicationMailer::BRAND_FULL %>

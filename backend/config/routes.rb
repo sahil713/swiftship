@@ -29,7 +29,7 @@ Rails.application.routes.draw do
 
       namespace :admin do
         get "dashboard", to: "dashboard#show"
-        resources :bookings, only: %i[index show update], param: :reference do
+        resources :bookings, only: %i[index show create update], param: :reference do
           member do
             post :status
             post :confirm_price
@@ -38,6 +38,8 @@ Rails.application.routes.draw do
             post "tasks/:task_id/unassign", action: :unassign_task
             post :add_note
             post :refund
+            post :payment_status
+            post :send_payment_details
             post "change_requests/:change_request_id", action: :resolve_change_request
           end
         end
@@ -52,7 +54,8 @@ Rails.application.routes.draw do
             get :file, on: :member
           end
         end
-        resources :tasks, only: %i[index show] do
+        resources :payment_methods, only: %i[index create update destroy]
+        resources :tasks, only: %i[index show create update] do
           member do
             post :assign
             post :unassign
@@ -79,6 +82,7 @@ Rails.application.routes.draw do
             post :proof                 # save / correct proof of delivery
             post :complete              # delivery completed
             post :close                 # close task (checks everything is recorded)
+            post :message
             post :report_issue
           end
         end

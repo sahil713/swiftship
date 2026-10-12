@@ -4,7 +4,7 @@ import { motion } from "framer-motion";
 import { CreditCard, Lock, RefreshCw, XCircle, PencilLine, Copy, ExternalLink } from "lucide-react";
 import { api } from "../lib/api.js";
 import { useApi } from "../lib/hooks.js";
-import { date, dateTime, humanize, money } from "../lib/format.js";
+import { date, dateTime, humanize, money, PAYMENT_STATUS_LABELS, PAYMENT_TONE } from "../lib/format.js";
 import { Alert, Badge, Field, Modal, Spinner, StatusBadge } from "../components/ui.jsx";
 import { EventTimeline, ProgressTrack } from "../components/StatusTimeline.jsx";
 import { useToast } from "../components/Toast.jsx";
@@ -131,7 +131,7 @@ export default function OrderPage({ embedded = false }) {
         </div>
         <div className="row">
           <StatusBadge status={b.status} />
-          <Badge tone={b.payment_status === "paid" ? "good" : b.payment_status === "unpaid" ? "neutral" : "warning"}>{humanize(b.payment_status)}</Badge>
+          <Badge tone={PAYMENT_TONE[b.payment_status]}>{PAYMENT_STATUS_LABELS[b.payment_status]}</Badge>
           <button className="icon-btn" onClick={reload} aria-label="Refresh" title="Refresh"><RefreshCw size={16} /></button>
         </div>
       </div>

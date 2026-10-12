@@ -1,0 +1,10 @@
+<div style="background:#f6f7fb;padding:24px 12px;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif">
+  <div style="max-width:600px;margin:0 auto;background:#ffffff;border:1px solid #dde1ec;border-radius:16px;padding:24px;color:#0e1526;font-size:15px">
+    <div style="font-size:13px;color:#6a7390">Shift Logistics · Booking <%= @booking.reference %></div>
+    <p style="margin:12px 0">Hello <%= @contact_name %>,</p>
+    <p style="margin:0 0 12px;color:#3d4760">Message from <strong><%= @driver_name %></strong>, your driver:</p>
+    <div style="background:#f6f7fb;border-radius:12px;padding:14px 16px;white-space:pre-wrap"><%= @body %></div>
+    <p style="margin:16px 0 0;color:#3d4760">You can reply to this email to reach our office.</p>
+    <p style="font-size:12px;color:#6a7390;margin:20px 0 0"><%= ApplicationMailer::BRAND_FULL %></p>
+  </div>
+</div>

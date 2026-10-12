@@ -1,0 +1,9 @@
+Hello <%= @contact_name %>,
+
+Message from <%= @driver_name %>, your Shift Logistics driver, about booking <%= @booking.reference %>:
+
+<%= @body %>
+
+You can reply to this email to reach our office.
+
+— <%= ApplicationMailer::BRAND_FULL %>

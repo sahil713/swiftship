@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ArrowLeft, ExternalLink, Calculator, StickyNote, Mail, MessageSquareText } from "lucide-react";
 import { api } from "../../lib/api.js";
 import { useApi } from "../../lib/hooks.js";
-import { date, dateTime, humanize, money, penceFromPounds, poundsFromPence, STATUS_LABELS, TASK_KIND_LABELS } from "../../lib/format.js";
+import { date, dateTime, humanize, money, penceFromPounds, poundsFromPence, STATUS_LABELS, TASK_KIND_LABELS, PAYMENT_STATUS_LABELS, PAYMENT_TONE } from "../../lib/format.js";
 import { Alert, Badge, Field, Modal, Spinner, StatusBadge } from "../../components/ui.jsx";
 import { EventTimeline } from "../../components/StatusTimeline.jsx";
 import { useToast } from "../../components/Toast.jsx";
@@ -70,7 +70,7 @@ export default function Booking() {
         </div>
         <div className="row">
           <StatusBadge status={b.status} />
-          <Badge tone={b.payment_status === "paid" ? "good" : b.payment_status === "unpaid" ? "neutral" : "warning"}>{humanize(b.payment_status)}</Badge>
+          <Badge tone={PAYMENT_TONE[b.payment_status]}>Payment: {PAYMENT_STATUS_LABELS[b.payment_status]}</Badge>
         </div>
       </div>
 
@@ -107,7 +107,7 @@ export default function Booking() {
               <dt>Item</dt><dd>{b.quantity} × {b.item_description}{b.fragile ? " · fragile" : ""}</dd>
               <dt>Weight</dt><dd>{b.weight_kg ? `${Number(b.weight_kg)} kg each` : <span className="muted">Not given</span>}</dd>
               <dt>Dimensions</dt><dd>{b.length_cm ? `${Number(b.length_cm)} × ${Number(b.width_cm)} × ${Number(b.height_cm)} cm` : <span className="muted">Not given</span>}</dd>
-              <dt>Collection</dt><dd>{date(b.collection_date)}</dd>
+              <dt>Collection</dt><dd>{date(b.collection_date)}{b.collection_time ? ` at ${b.collection_time}` : ""}</dd>
               <dt>Est. delivery</dt><dd>{date(b.estimated_delivery_date)}</dd>
               <dt>Special requirements</dt><dd style={{ whiteSpace: "pre-wrap" }}>{b.special_requirements || <span className="muted">None</span>}</dd>
               <dt>Customer</dt><dd>{b.user ? <Link to={`/admin/customers/${b.user.id}`}>{b.user.name}</Link> : "Guest"} · {b.customer_email}</dd>
@@ -207,6 +207,9 @@ export default function Booking() {
               </form>
             )}
           </div>
+
+          <PaymentStatusCard booking={b} act={act} busy={busy} />
+          <SendPaymentDetails booking={b} onSent={(res) => setData((d) => ({ ...d, booking: res.booking }))} />
 
           <div className="card stack">
             <h3 style={{ margin: 0 }}>Payments</h3>
@@ -362,5 +365,82 @@ function DriverTasks({ booking: b, drivers, act, busy }) {
       ))}
       {canDeliver && assignSelect("delivery", "Delivery task")}
     </div>
+  );
+}
+
+/** Manual payment status change (kept in the change history). Marking a booking Booked also sets it to Paid. */
+function PaymentStatusCard({ booking: b, act, busy }) {
+  const [value, setValue] = useState(b.payment_status);
+  const [reason, setReason] = useState("");
+  useEffect(() => setValue(b.payment_status), [b.payment_status]);
+  return (
+    <form className="card stack" onSubmit={async (e) => { e.preventDefault(); if (await act("/payment_status", { payment_status: value, reason }, `Payment status: ${PAYMENT_STATUS_LABELS[value]}`)) setReason(""); }}>
+      <div className="row-between"><h3 style={{ margin: 0 }}>Payment status</h3><Badge tone={PAYMENT_TONE[b.payment_status]}>{PAYMENT_STATUS_LABELS[b.payment_status]}</Badge></div>
+      <Field label="Change to" htmlFor="pay-status">
+        <select id="pay-status" className="select" value={value} onChange={(e) => setValue(e.target.value)}>
+          {Object.entries(PAYMENT_STATUS_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+        </select>
+      </Field>
+      <Field label="Reason (optional)" htmlFor="pay-reason" hint="e.g. Bank transfer received 12 Oct"><input id="pay-reason" className="input" value={reason} onChange={(e) => setReason(e.target.value)} /></Field>
+      <button className="btn btn-secondary btn-sm" disabled={busy || value === b.payment_status}>Save payment status</button>
+      <p className="small muted" style={{ margin: 0 }}>Marking a quote as Booked sets the payment to Paid automatically.</p>
+    </form>
+  );
+}
+
+/** Send a saved bank / payment method to the customer by email and/or text. */
+function SendPaymentDetails({ booking: b, onSent }) {
+  const toast = useToast();
+  const methods = useApi("/admin/payment_methods", { active: "1" }).data;
+  const settings = useApi("/admin/settings").data;
+  const smsOk = settings?.messaging?.sms;
+  const [form, setForm] = useState({ payment_method_id: "", amount: poundsFromPence(b.confirmed_price_pence), message: "", email: true, sms: false });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const method = (methods || []).find((m) => String(m.id) === String(form.payment_method_id));
+  // Only one saved method: choose it for the user.
+  useEffect(() => {
+    if (methods?.length === 1) setForm((f) => (f.payment_method_id ? f : { ...f, payment_method_id: String(methods[0].id) }));
+  }, [methods]);
+  const submit = async (e) => {
+    e.preventDefault();
+    setError(null);
+    const channels = [form.email && "email", form.sms && "sms"].filter(Boolean);
+    if (!channels.length) return setError("Choose email and/or text.");
+    setBusy(true);
+    try {
+      const res = await api(`/admin/bookings/${b.reference}/send_payment_details`, { method: "POST", body: { payment_method_id: form.payment_method_id, amount: form.amount, message: form.message, channels } });
+      res.results.forEach((r) => toast(`${r.channel === "sms" ? "Text" : "Email"} to ${r.recipient}: ${r.status.replace("_", " ")}${r.error ? ` – ${r.error}` : ""}`, r.status === "sent" ? "success" : "error"));
+      onSent(res);
+    } catch (err) { setError(err.message); } finally { setBusy(false); }
+  };
+  if (methods && methods.length === 0) {
+    return <div className="card"><h3>Send payment details</h3><p className="small muted" style={{ margin: 0 }}>No saved bank / payment details yet. Add them in <Link to="/admin/settings">Settings → Bank / payment details</Link>.</p></div>;
+  }
+  return (
+    <form className="card stack" onSubmit={submit}>
+      <h3 style={{ margin: 0 }}>Send payment details</h3>
+      {error && <Alert type="error">{error}</Alert>}
+      <Field label="Payment method" htmlFor="spd-method">
+        <select id="spd-method" className="select" value={form.payment_method_id} onChange={(e) => setForm({ ...form, payment_method_id: e.target.value })} required>
+          <option value="">Select payment method…</option>
+          {(methods || []).map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+        </select>
+      </Field>
+      {method && (
+        <div className="small" style={{ background: "var(--bg-subtle)", borderRadius: 10, padding: 10 }}>
+          {[["Bank", method.bank_name], ["Account name", method.account_name], ["Sort code", method.sort_code], ["Account no.", method.account_number], ["IBAN", method.iban], ["SWIFT/BIC", method.swift_bic], ["Reference", b.reference]].filter(([, v]) => v).map(([l, v]) => <div key={l}><span className="muted">{l}:</span> <strong className="mono">{v}</strong></div>)}
+          {method.instructions && <div style={{ marginTop: 6 }}>{method.instructions}</div>}
+        </div>
+      )}
+      <Field label="Amount due (£, optional)" htmlFor="spd-amount"><input id="spd-amount" type="number" step="0.01" min="0" className="input" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} /></Field>
+      <Field label="Message (optional)" htmlFor="spd-msg"><textarea id="spd-msg" className="textarea" rows={2} value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} /></Field>
+      <label className="checkbox"><input type="checkbox" checked={form.email} onChange={(e) => setForm({ ...form, email: e.target.checked })} /> <span>Email to <strong>{b.customer_email}</strong></span></label>
+      <label className="checkbox" style={smsOk ? undefined : { opacity: 0.6 }}>
+        <input type="checkbox" checked={form.sms} disabled={!smsOk} onChange={(e) => setForm({ ...form, sms: e.target.checked })} />
+        <span>Text to <strong>{b.collection_phone}</strong>{!smsOk && <span className="small muted"><br />Text messages need SMS credits on the Brevo account.</span>}</span>
+      </label>
+      <button className="btn btn-primary btn-sm" disabled={busy}>{busy ? "Sending…" : "Send payment details"}</button>
+    </form>
   );
 }

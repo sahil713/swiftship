@@ -2,7 +2,7 @@ module Api
   module V1
     module Admin
       class BookingsController < BaseController
-        before_action :load_booking, except: :index
+        before_action :load_booking, except: %i[index create]
         before_action :admin_only!, only: :refund
 
         EDITABLE = %i[
@@ -14,7 +14,7 @@ module Api
         ].freeze
 
         def index
-          scope = Booking.includes(:service, :driver).search(params[:q]).order(created_at: :desc)
+          scope = Booking.includes(:service, :driver, :user).search(params[:q]).order(created_at: :desc)
           scope = scope.where(status: params[:status]) if params[:status].present?
           scope = scope.where(service_id: params[:service_id]) if params[:service_id].present?
           scope = scope.where(driver_id: params[:driver_id]) if params[:driver_id].present?
@@ -27,6 +27,81 @@ module Api
         end
 
         def show = render_booking
+
+        NEW_BOOKING_FIELDS = (EDITABLE + %i[collection_time]).freeze
+
+        # Office creates a booking (e.g. taken over the phone). Postcodes go through the same
+        # service-area rules as the website; Ireland is refused, restricted areas are flagged.
+        def create
+          attrs = params.require(:booking).permit(*NEW_BOOKING_FIELDS, :customer_name, :customer_email, :customer_phone,
+                                                  :special_requirements, :status, :payment_status, :agreed_price)
+          collection = ServiceArea.check(attrs[:collection_postcode])
+          delivery = ServiceArea.check(attrs[:delivery_postcode])
+          errors = []
+          errors << "Collection: #{collection.message}" unless collection.ok
+          errors << "Delivery: #{delivery.message}" unless delivery.ok
+          return render(json: { error: errors.to_sentence }, status: :unprocessable_entity) if errors.any?
+
+          email = attrs[:customer_email].to_s.strip.downcase
+          booking = Booking.new(attrs.except(:customer_name, :customer_email, :customer_phone, :status, :payment_status, :agreed_price))
+          booking.customer_email = email
+          booking.user = User.find_by("lower(email) = ?", email) if email.present?
+          # Contact details default to the customer's when left blank.
+          { "collection_contact_name" => :customer_name, "collection_email" => :customer_email, "collection_phone" => :customer_phone }.each do |field, src|
+            booking[field] = attrs[src] if booking[field].blank?
+          end
+          booking.collection_postcode = collection.postcode
+          booking.delivery_postcode = delivery.postcode
+          booking.apply_area_review(collection:, delivery:)
+          pence = attrs[:agreed_price].present? ? (BigDecimal(attrs[:agreed_price].to_s) * 100).round : nil
+          if pence
+            booking.confirmed_price_pence = pence
+            booking.price_confirmed_at = Time.current
+          end
+
+          Booking.transaction do
+            booking.save!
+            booking.status_events.create!(status: "quote_requested", user: current_user, note: "Booking created by the office", customer_visible: false)
+            booking.transition_to!("booked", user: current_user, note: "Booking confirmed") if attrs[:status] == "booked"
+            booking.set_payment_status!(attrs[:payment_status], user: current_user, reason: "Set when the booking was created") if attrs[:payment_status].present?
+            booking.notes.create!(user: current_user, kind: "internal", body: "Service area review needed:\n#{booking.area_review_notes}") if booking.area_review
+          end
+          @booking = booking
+          render_booking(status: :created)
+        rescue ArgumentError => e
+          render json: { error: e.message }, status: :unprocessable_entity
+        end
+
+        # Manual payment status change (kept in the change history).
+        def payment_status
+          @booking.set_payment_status!(params.require(:payment_status), user: current_user, reason: params[:reason])
+          @booking.notes.create!(user: current_user, kind: "internal",
+                                 body: "Payment status set to #{Booking::PAYMENT_STATUS_LABELS[@booking.payment_status]}#{params[:reason].present? ? " – #{params[:reason]}" : ''}")
+          render_booking
+        rescue ArgumentError => e
+          render json: { error: e.message }, status: :unprocessable_entity
+        end
+
+        # Sends a saved payment method's details to the customer by email and/or text.
+        def send_payment_details
+          method = PaymentMethod.active.find(params.require(:payment_method_id))
+          channels = Array(params[:channels]) & %w[email sms]
+          return render(json: { error: "Choose email and/or text" }, status: :unprocessable_entity) if channels.empty?
+          amount = params[:amount].present? ? (BigDecimal(params[:amount].to_s) * 100).round : @booking.confirmed_price_pence
+          details = method.detail_lines(reference: @booking.reference).map { |l, v| "#{l}: #{v}" }.join(", ")
+          sms_text = ["Shift Logistics – booking #{@booking.reference}.", (amount ? "Amount due #{Money.format(amount)}." : nil),
+                      "Pay to: #{details}.", method.instructions.presence, params[:message].presence].compact.join(" ")
+          results = CustomerMessenger.deliver(
+            @booking, channels:, email_to: @booking.customer_email, phone_to: @booking.collection_phone,
+            subject: "Payment details for booking #{@booking.reference}", sms_text:,
+            email: ->(to) { CustomerMailer.payment_details(@booking, method, to:, amount_pence: amount, message: params[:message]) }
+          )
+          @booking.notes.create!(user: current_user, kind: "internal",
+                                 body: "Payment details (#{method.name}) sent – #{results.map { |r| "#{r.channel == 'sms' ? 'text' : 'email'} to #{r.recipient}: #{r.status.tr('_', ' ')}" }.join('; ')}")
+          render json: { results: results.map(&:as_json), booking: @booking.reload.detail_json(staff: true) }
+        rescue ArgumentError
+          render json: { error: "Enter a valid amount" }, status: :unprocessable_entity
+        end
 
         def update
           @booking.assign_attributes(params.require(:booking).permit(*EDITABLE))
@@ -73,7 +148,7 @@ module Api
             return render_booking if task.driver_id == driver.id
             task.assign_to!(driver, by: current_user)
           else
-            error = task_creation_error(kind)
+            error = @booking.task_creation_error(kind)
             return render json: { error: }, status: :unprocessable_entity if error
             task = @booking.driver_tasks.create!(kind:, driver:)
             task.events.create!(action: "assigned", user: current_user, note: driver.name, occurred_at: Time.current)
@@ -130,23 +205,10 @@ module Api
 
         private
 
-        # Why a new task of this kind can't be created yet (nil when it can).
-        def task_creation_error(kind)
-          case kind
-          when "collection", "direct"
-            return "Confirm the booking (status Booked) before assigning the collection." unless @booking.status == "booked"
-            other = kind == "collection" ? @booking.direct_task : @booking.collection_task
-            "This job already has a #{other.kind == 'direct' ? 'direct collection & delivery' : 'collection'} task." if other
-          when "delivery"
-            return "This job is handled as a direct collection & delivery." if @booking.direct_task
-            "Delivery tasks can be assigned once the items are at the depot." unless %w[in_warehouse in_transit failed_delivery].include?(@booking.status)
-          end
-        end
-
         def load_booking = @booking = Booking.find_by!(reference: params[:reference])
 
-        def render_booking
-          render json: { booking: @booking.reload.detail_json(staff: true), drivers: User.drivers.order(:name).map { _1.slice(:id, :name) } }
+        def render_booking(status: :ok)
+          render status:, json: { booking: @booking.reload.detail_json(staff: true), drivers: User.drivers.order(:name).map { _1.slice(:id, :name) } }
         end
       end
     end

@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { Search } from "lucide-react";
+import { Plus, Search } from "lucide-react";
 import { useApi } from "../../lib/hooks.js";
-import { date, money, STATUS_LABELS, humanize } from "../../lib/format.js";
+import { date, money, STATUS_LABELS, PAYMENT_STATUS_LABELS, PAYMENT_TONE } from "../../lib/format.js";
 import { Empty, Pagination, Spinner, StatusBadge, Badge } from "../../components/ui.jsx";
 
 export default function Bookings() {
@@ -31,7 +31,10 @@ export default function Bookings() {
 
   return (
     <div className="stack">
-      <h1 style={{ margin: 0 }}>Bookings</h1>
+      <div className="row-between">
+        <h1 style={{ margin: 0 }}>Bookings</h1>
+        <Link to="/admin/bookings/new" className="btn btn-primary"><Plus size={16} /> New booking</Link>
+      </div>
       <div className="toolbar" role="search">
         <div style={{ position: "relative", flex: "2 1 260px" }}>
           <Search size={16} style={{ position: "absolute", left: 12, top: 12, color: "var(--text-muted)" }} aria-hidden />
@@ -56,7 +59,7 @@ export default function Bookings() {
         <label className="sr-only" htmlFor="bk-pay">Payment</label>
         <select id="bk-pay" className="select" value={filters.payment_status} onChange={(e) => update("payment_status", e.target.value)}>
           <option value="">Any payment</option>
-          {["unpaid", "paid", "partially_refunded", "refunded"].map((s) => <option key={s} value={s}>{humanize(s)}</option>)}
+          {Object.entries(PAYMENT_STATUS_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
         </select>
       </div>
       {loading && !data ? <Spinner /> : data.bookings.length === 0 ? (
@@ -76,7 +79,7 @@ export default function Bookings() {
                     <td>{date(b.collection_date)}</td>
                     <td>{b.driver?.name || <span className="muted">—</span>}</td>
                     <td><StatusBadge status={b.status} />{b.area_review && <div style={{ marginTop: 4 }}><Badge tone="warning">Area review</Badge></div>}</td>
-                    <td><Badge tone={b.payment_status === "paid" ? "good" : b.payment_status === "unpaid" ? "neutral" : "warning"} plain>{humanize(b.payment_status)}</Badge></td>
+                    <td><Badge tone={PAYMENT_TONE[b.payment_status]} plain>{PAYMENT_STATUS_LABELS[b.payment_status] || b.payment_status}</Badge></td>
                     <td className="num">{money(b.price_pence)}{!b.confirmed_price_pence && <div className="small muted">est.</div>}</td>
                   </tr>
                 ))}

@@ -60,3 +60,9 @@ export const exactDateTime = (value) =>
 export const timeOnly = (value) => (value ? new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit" }).format(new Date(value)) : "—");
 
 export const TASK_KIND_LABELS = { collection: "Collection", delivery: "Delivery", direct: "Collection + Delivery" };
+
+export const PAYMENT_STATUS_LABELS = {
+  unpaid: "Pending", partially_paid: "Partially paid", paid: "Paid", failed: "Failed",
+  partially_refunded: "Partially refunded", refunded: "Refunded", cancelled: "Cancelled",
+};
+export const PAYMENT_TONE = { unpaid: "warning", partially_paid: "warning", paid: "good", failed: "critical", partially_refunded: "info", refunded: "muted", cancelled: "muted" };

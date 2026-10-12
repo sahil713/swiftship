@@ -3,7 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { ArrowLeft, PenLine, History } from "lucide-react";
 import { api } from "../../lib/api.js";
 import { useApi } from "../../lib/hooks.js";
-import { date, dateTime, duration, humanize, TASK_KIND_LABELS } from "../../lib/format.js";
+import { date, dateTime, duration, humanize, PAYMENT_STATUS_LABELS, PAYMENT_TONE, TASK_KIND_LABELS } from "../../lib/format.js";
 import { Alert, Badge, Field, Modal, Spinner } from "../../components/ui.jsx";
 import ProofView from "../../components/ProofView.jsx";
 import { TaskEvents } from "../../components/TaskRecord.jsx";
@@ -53,6 +53,35 @@ function CorrectProof({ task, kind, onClose, onSaved }) {
   );
 }
 
+/** Change the task's date/time or the driver's instructions. */
+function EditSchedule({ task, onClose, onSaved }) {
+  const [form, setForm] = useState({ scheduled_for: toLocalInput(task.scheduled_for), instructions: task.instructions || "" });
+  const [error, setError] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const submit = async (e) => {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      const body = { task: { instructions: form.instructions, scheduled_for: form.scheduled_for ? new Date(form.scheduled_for).toISOString() : "" } };
+      onSaved(await api(`/admin/tasks/${task.id}`, { method: "PATCH", body }));
+    } catch (err) {
+      setError(err.message);
+      setBusy(false);
+    }
+  };
+  return (
+    <Modal open onClose={onClose} title="Edit date & instructions">
+      <form className="stack" onSubmit={submit}>
+        {error && <Alert type="error">{error}</Alert>}
+        <Field label="Date & time" htmlFor="es-when"><input id="es-when" type="datetime-local" className="input" value={form.scheduled_for} onChange={(e) => setForm({ ...form, scheduled_for: e.target.value })} /></Field>
+        <Field label="Notes / instructions for the driver" htmlFor="es-notes"><textarea id="es-notes" className="textarea" rows={4} value={form.instructions} onChange={(e) => setForm({ ...form, instructions: e.target.value })} /></Field>
+        <button className="btn btn-primary" disabled={busy}>{busy ? "Saving…" : "Save"}</button>
+      </form>
+    </Modal>
+  );
+}
+
 function Section({ title, children, action }) {
   return (
     <section className="card stack">
@@ -72,6 +101,7 @@ export default function TaskDetail() {
   const toast = useToast();
   const { data: t, loading, error, setData } = useApi(`/admin/tasks/${id}`);
   const [correcting, setCorrecting] = useState(null);
+  const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
 
   if (loading && !t) return <Spinner />;
@@ -109,7 +139,7 @@ export default function TaskDetail() {
       {t.missing_for_close?.length > 0 && t.started_at && <Alert type="info" title="Still to record before the task can be closed">{t.missing_for_close.join(", ")}</Alert>}
 
       <div className="grid-2">
-        <Section title="Task information">
+        <Section title="Task information" action={editable && <button className="btn btn-ghost btn-sm" onClick={() => setEditing(true)}><PenLine size={14} /> Edit date & notes</button>}>
           <Times rows={[
             ["Task", `#${t.id} · ${TASK_KIND_LABELS[t.kind]}`],
             ["Job", b.reference],
@@ -117,6 +147,10 @@ export default function TaskDetail() {
             ["Service", b.service],
             ["Item", b.item],
             ["Status", t.status_label],
+            ["Booking status", b.status_label || humanize(b.status || "")],
+            ["Payment", <Badge tone={PAYMENT_TONE[b.payment_status]} plain>{b.payment_status_label || PAYMENT_STATUS_LABELS[b.payment_status]}</Badge>],
+            ["Date & time", t.scheduled_for ? dateTime(t.scheduled_for) : null],
+            ["Instructions", t.instructions ? <span style={{ whiteSpace: "pre-wrap" }}>{t.instructions}</span> : null],
             ["Created", dateTime(t.created_at)],
           ]} />
           {b.special_requirements && <Alert type="info" title="Special requirements">{b.special_requirements}</Alert>}
@@ -150,7 +184,7 @@ export default function TaskDetail() {
           <Section title="Collection" action={correctButton("collection")}>
             <Times rows={[
               ["Address", <>{b.collection.address}<div className="small muted">{b.collection.contact_name} · {b.collection.phone}</div></>],
-              ["Scheduled", b.collection_date ? date(b.collection_date) : null],
+              ["Scheduled", b.collection_date ? `${date(b.collection_date)}${b.collection_time ? ` at ${b.collection_time}` : ""}` : null],
               ["Arrived", dateTime(t.arrived_at)],
               ["Completed", dateTime(t.collected_at)],
             ]} />
@@ -200,6 +234,7 @@ export default function TaskDetail() {
         )}
       </Section>
 
+      {editing && <EditSchedule task={t} onClose={() => setEditing(false)} onSaved={(d) => { setData(d); setEditing(false); toast("Task updated – the driver sees the change straight away"); }} />}
       {correcting && <CorrectProof task={t} kind={correcting} onClose={() => setCorrecting(null)} onSaved={(d) => { setData(d); setCorrecting(null); toast("Correction saved – original kept in the history"); }} />}
     </div>
   );

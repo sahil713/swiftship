@@ -208,6 +208,22 @@ class DriverTask < ApplicationRecord
     log!("issue_reported", user, body)
   end
 
+  # Driver messages the sender (collection) or recipient (delivery) by email and/or text.
+  def message_customer!(user:, side:, channels:, body:)
+    step!("Choose who to message") { (side == "collection" && !delivery?) || (side == "delivery" && !collection?) }
+    step!("Write a message") { body.to_s.strip.length.between?(2, 500) }
+    step!("Choose email or text") { channels.any? && (channels - %w[email sms]).empty? }
+    contact = booking["#{side}_contact_name"]
+    results = CustomerMessenger.deliver(
+      booking, channels:, email_to: booking["#{side}_email"], phone_to: booking["#{side}_phone"],
+      subject: "Message from your driver about #{booking.reference}", sms_text: "Shift Logistics (#{booking.reference}): #{body.strip}",
+      email: ->(to) { CustomerMailer.driver_message(booking, to:, contact_name: contact, driver_name: user.name, body: body.strip) }
+    )
+    summary = results.map { |r| "#{r.channel == 'sms' ? 'Text' : 'Email'} to #{r.recipient}: #{r.status.tr('_', ' ')}" }.join(" · ")
+    log!("customer_messaged", user, "#{contact} – “#{body.strip.truncate(140)}” (#{summary})")
+    results
+  end
+
   # ---- Timing ----
 
   def timings
@@ -230,7 +246,7 @@ class DriverTask < ApplicationRecord
   end
 
   def as_json(*)
-    slice(:id, :kind, :status, :warehouse_note, :created_at, :started_at, :arrived_at, :collected_at, :at_depot_at,
+    slice(:id, :kind, :status, :warehouse_note, :scheduled_for, :instructions, :created_at, :started_at, :arrived_at, :collected_at, :at_depot_at,
           :arrived_delivery_at, :delivered_at, :closed_at, :completed_at)
       .merge(status_label:, current_side:, driver: driver&.slice(:id, :name), timings:, missing_for_close: (missing_for_close if open?),
              proofs: proofs.to_h { [_1.kind, _1.as_json] },

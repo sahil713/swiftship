@@ -11,6 +11,7 @@ class TaskEvent < ApplicationRecord
     "delivery_signature" => "Customer signature received", "delivery_proof_updated" => "Delivery proof updated",
     "delivery_completed" => "Delivery completed", "closed" => "Task closed", "issue_reported" => "Problem reported",
     "proof_corrected" => "Record corrected by office", "cancelled" => "Task cancelled",
+    "customer_messaged" => "Message sent to customer", "rescheduled" => "Schedule or instructions changed",
     # Labels for events recorded before the step-by-step workflow.
     "arrived" => "Arrived at location", "collected" => "Proof of collection submitted",
     "pod_recorded" => "Proof of delivery submitted", "completed" => "Task closed – delivery completed"

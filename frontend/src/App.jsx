@@ -19,6 +19,7 @@ import AccountProfile from "./pages/account/Profile.jsx";
 import AdminDashboard from "./pages/admin/Dashboard.jsx";
 import AdminBookings from "./pages/admin/Bookings.jsx";
 import AdminBooking from "./pages/admin/Booking.jsx";
+import AdminNewBooking from "./pages/admin/NewBooking.jsx";
 import AdminCustomers, { AdminCustomer } from "./pages/admin/Customers.jsx";
 import AdminPricing from "./pages/admin/Pricing.jsx";
 import AdminEnquiries from "./pages/admin/Enquiries.jsx";
@@ -85,6 +86,7 @@ export default function App() {
       <Route element={<RequireRole roles={["admin", "operations"]}><AppLayout title="Admin" links={ADMIN_LINKS} /></RequireRole>}>
         <Route path="admin" element={<AdminDashboard />} />
         <Route path="admin/bookings" element={<AdminBookings />} />
+        <Route path="admin/bookings/new" element={<AdminNewBooking />} />
         <Route path="admin/bookings/:reference" element={<AdminBooking />} />
         <Route path="admin/customers" element={<AdminCustomers />} />
         <Route path="admin/customers/:id" element={<AdminCustomer />} />

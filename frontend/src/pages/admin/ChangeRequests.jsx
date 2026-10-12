@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useApi } from "../../lib/hooks.js";
-import { dateTime, humanize } from "../../lib/format.js";
+import { dateTime, humanize, PAYMENT_STATUS_LABELS } from "../../lib/format.js";
 import { Badge, Empty, Pagination, Spinner, StatusBadge, Tabs } from "../../components/ui.jsx";
 
 export default function ChangeRequests() {
@@ -28,7 +28,7 @@ export default function ChangeRequests() {
                     <td><Badge tone={r.kind === "cancellation" ? "critical" : "info"} plain>{humanize(r.kind)}</Badge></td>
                     <td className="small" style={{ maxWidth: 320 }}>{r.details || <span className="muted">—</span>}</td>
                     <td><StatusBadge status={r.booking.status} /></td>
-                    <td>{humanize(r.booking.payment_status)}</td>
+                    <td>{PAYMENT_STATUS_LABELS[r.booking.payment_status]}</td>
                     <td className="small">{dateTime(r.created_at)}</td>
                     <td><Badge tone={r.status === "pending" ? "warning" : r.status === "approved" ? "good" : "muted"}>{humanize(r.status)}</Badge></td>
                   </tr>

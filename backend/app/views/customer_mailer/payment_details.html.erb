@@ -1,0 +1,28 @@
+<div style="background:#f6f7fb;padding:24px 12px;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif">
+  <div style="max-width:600px;margin:0 auto;background:#ffffff;border:1px solid #dde1ec;border-radius:16px;overflow:hidden">
+    <div style="background:#0b1a4a;color:#ffffff;padding:20px 24px">
+      <div style="font-size:13px;opacity:.85">Shift Logistics · Payment details</div>
+      <div style="font-size:22px;font-weight:800;margin-top:4px">Booking <%= @booking.reference %></div>
+    </div>
+    <div style="padding:20px 24px 24px;color:#0e1526;font-size:15px">
+      <p style="margin:0 0 14px">Hello <%= @customer_name %>,</p>
+      <p style="margin:0 0 16px;color:#3d4760">Here are the details to pay for your booking.</p>
+      <% if @amount_pence %>
+        <div style="background:#e3ebff;border-radius:12px;padding:14px 16px;margin-bottom:16px">
+          <div style="font-size:13px;color:#1d49c4">Amount due</div>
+          <div style="font-size:26px;font-weight:800"><%= Money.format(@amount_pence) %></div>
+        </div>
+      <% end %>
+      <div style="font-weight:800;margin-bottom:6px"><%= @method.name %></div>
+      <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;font-size:14px">
+        <% @method.detail_lines(reference: @booking.reference).each do |label, value| %>
+          <tr><td style="padding:6px 12px 6px 0;color:#6a7390;width:150px"><%= label %></td><td style="padding:6px 0;font-weight:700;font-family:ui-monospace,Menlo,monospace"><%= value %></td></tr>
+        <% end %>
+      </table>
+      <% if @method.instructions.present? %><p style="margin:16px 0 0;white-space:pre-wrap"><%= @method.instructions %></p><% end %>
+      <% if @message.present? %><p style="margin:16px 0 0;white-space:pre-wrap"><%= @message %></p><% end %>
+      <p style="margin:20px 0 0;color:#3d4760">Please use <strong><%= @booking.reference %></strong> as your payment reference. Reply to this email if you have any questions.</p>
+      <p style="font-size:12px;color:#6a7390;margin:24px 0 0"><%= ApplicationMailer::BRAND_FULL %></p>
+    </div>
+  </div>
+</div>

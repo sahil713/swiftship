@@ -6,6 +6,8 @@ class Setting < ApplicationRecord
     "pricing_enabled" => false,
     # Drivers must capture a signature with the proof of collection.
     "require_collection_signature" => true,
+    # Shown to drivers on collection tasks (with Copy / Maps) – where to drop items off.
+    "depot_address" => "",
     # Where new enquiries are emailed. Blank = every active admin user.
     "enquiry_notification_email" => "",
     "support_email" => "help@shiftlogistics.example",

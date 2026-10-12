@@ -11,7 +11,7 @@ module Api
         rescue_from DriverTask::InvalidStep, with: ->(e) { render json: { error: e.message }, status: :unprocessable_entity }
 
         def index
-          scope = tasks_scope.includes(:driver, :proofs, :events, booking: :service).order(:created_at)
+          scope = tasks_scope.includes(:driver, :proofs, :events, booking: :service).order(Arel.sql("scheduled_for IS NULL, scheduled_for, created_at"))
           scope = params[:scope] == "completed" ? scope.finished.reorder(updated_at: :desc).limit(50) : scope.open.where.not(status: "unassigned")
           render json: scope.map { task_json(_1) }
         end
@@ -32,6 +32,12 @@ module Api
         def proof = step { @task.save_delivery_proof!(user: current_user, geo:, **proof_params) }
         def complete = step { @task.complete_delivery!(user: current_user, geo:) }
         def close = step { @task.close!(user: current_user, geo:) }
+
+        # Driver sends the sender or recipient a message by email and/or text.
+        def message
+          results = @task.message_customer!(user: current_user, side: params[:side].to_s, channels: Array(params[:channels]), body: params[:body])
+          render json: task_json(@task.reload, full: true).merge(message_results: results.map(&:as_json))
+        end
 
         def report_issue
           kind = params.fetch(:kind, @task.current_side == "collection" ? "collection_issue" : "delivery_issue")
@@ -89,10 +95,11 @@ module Api
             collection: (stop.call("collection") unless task.delivery?),
             delivery: (stop.call("delivery") unless task.collection?),
             special_requirements: b.special_requirements, customer_email: (b.customer_email unless task.delivery?),
-            collection_signature_required: TaskProof.collection_signature_required?,
+            collection_signature_required: TaskProof.collection_signature_required?, sms_available: SmsSender.available?,
+            depot_address: Setting.get(:depot_address).presence,
             item: { description: b.item_description, quantity: b.quantity, weight_kg: b.weight_kg&.to_f,
                     length_cm: b.length_cm&.to_f, width_cm: b.width_cm&.to_f, height_cm: b.height_cm&.to_f, fragile: b.fragile }
-          ).merge(stop.call(side)) # contact_name/address etc. for the current stop, used by the task list
+          ).merge(stop.call(side).except(:instructions)) # current stop's contact/address for the task list; "instructions" stays the office's task instructions
           # Lists only need proof summaries – images are sent with the single task.
           unless full
             data["proofs"] = task.proofs.to_h { [_1.kind, { "person_name" => _1.person_name, "photo_count" => _1.photos.size }] }

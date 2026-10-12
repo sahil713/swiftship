@@ -1,9 +1,9 @@
 import { useRef, useState } from "react";
-import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, Navigation, Phone, Mail, CheckCircle2, Warehouse, Truck, PenLine, AlertTriangle, ClipboardCheck, MapPin, Lock } from "lucide-react";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { ArrowLeft, Navigation, Phone, Mail, CheckCircle2, Warehouse, Truck, PenLine, AlertTriangle, ClipboardCheck, MapPin, Lock, Copy, MessageSquare, CalendarClock } from "lucide-react";
 import { api } from "../../lib/api.js";
 import { useApi } from "../../lib/hooks.js";
-import { date } from "../../lib/format.js";
+import { date, dateTime } from "../../lib/format.js";
 import { Alert, Badge, Field, Modal, Spinner } from "../../components/ui.jsx";
 import SignaturePad from "../../components/SignaturePad.jsx";
 import PhotoPicker from "../../components/PhotoPicker.jsx";
@@ -47,8 +47,46 @@ const toLocalInput = (d) => {
 };
 const toIso = (local) => (local ? new Date(local).toISOString() : undefined);
 
+// Copies text on any phone: the Clipboard API where allowed, otherwise a hidden text box.
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    const el = document.createElement("textarea");
+    el.value = text;
+    el.setAttribute("readonly", "");
+    el.style.cssText = "position:fixed;top:0;left:0;opacity:0;font-size:16px";
+    document.body.appendChild(el);
+    el.select();
+    el.setSelectionRange(0, text.length);
+    let ok = false;
+    try { ok = document.execCommand("copy"); } catch { ok = false; }
+    el.remove();
+    return ok;
+  }
+}
+
+const mapsUrl = (address) => `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}`;
+
+/** Copy + Maps buttons for an address. */
+function AddressActions({ address, onMessage }) {
+  const toast = useToast();
+  const copy = async () => {
+    if (await copyText(address)) toast("Address copied");
+    else toast("Couldn't copy – press and hold the address to copy it", "error");
+  };
+  return (
+    <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+      <button type="button" className="btn btn-secondary btn-sm" onClick={copy}><Copy size={14} /> Copy address</button>
+      <a className="btn btn-secondary btn-sm" href={mapsUrl(address)} target="_blank" rel="noreferrer"><Navigation size={14} /> Maps</a>
+      {onMessage && <button type="button" className="btn btn-secondary btn-sm" onClick={onMessage}><MessageSquare size={14} /> Message customer</button>}
+    </div>
+  );
+}
+
 /** Address, contact and access details for one stop. */
-function Stop({ stop, title, active }) {
+function Stop({ stop, title, active, onMessage }) {
   const a = stop.address;
   const address = [a.line1, a.line2, a.city, a.postcode].filter(Boolean).join(", ");
   return (
@@ -57,7 +95,8 @@ function Stop({ stop, title, active }) {
         <div className="small muted"><MapPin size={14} style={{ display: "inline", verticalAlign: -2 }} /> {title}</div>
         {active && <Badge tone="accent" plain>Current stop</Badge>}
       </div>
-      <div style={{ fontSize: "1.1rem", fontWeight: 700, lineHeight: 1.35 }}>{a.line1}{a.line2 && <><br />{a.line2}</>}<br />{a.city} <span className="mono">{a.postcode}</span></div>
+      <div style={{ fontSize: "1.1rem", fontWeight: 700, lineHeight: 1.35, userSelect: "text" }}>{a.line1}{a.line2 && <><br />{a.line2}</>}<br />{a.city} <span className="mono">{a.postcode}</span></div>
+      <AddressActions address={address} onMessage={onMessage} />
       <dl className="detail-list">
         <div><dt>Contact</dt><dd>{stop.contact_name}</dd></div>
         <div><dt>Phone</dt><dd><a href={`tel:${stop.contact_phone}`}>{stop.contact_phone}</a></dd></div>
@@ -66,11 +105,75 @@ function Stop({ stop, title, active }) {
       {stop.instructions && <Alert type="warning" title="Access information">{stop.instructions}</Alert>}
       {active && (
         <div className="big-actions">
-          <a className="btn btn-primary btn-lg" href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}`} target="_blank" rel="noreferrer"><Navigation size={18} /> Navigate</a>
+          <a className="btn btn-primary btn-lg" href={mapsUrl(address)} target="_blank" rel="noreferrer"><Navigation size={18} /> Navigate</a>
           <a className="btn btn-secondary btn-lg" href={`tel:${stop.contact_phone}`}><Phone size={18} /> Call</a>
         </div>
       )}
     </section>
+  );
+}
+
+/** Where collection tasks drop the items off. */
+function Depot({ address }) {
+  return (
+    <section className="card stack">
+      <div className="small muted"><Warehouse size={14} style={{ display: "inline", verticalAlign: -2 }} /> Depot</div>
+      <div style={{ fontWeight: 700, lineHeight: 1.35, whiteSpace: "pre-line", userSelect: "text" }}>{address}</div>
+      <AddressActions address={address.replace(/\s*\n\s*/g, ", ")} />
+    </section>
+  );
+}
+
+/** Driver sends the sender or recipient a message; it is saved in the task history. */
+function MessageCustomer({ task, side: initialSide, onClose, onSent }) {
+  const toast = useToast();
+  const sides = [task.collection && ["collection", `Sender – ${task.collection.contact_name}`], task.delivery && ["delivery", `Recipient – ${task.delivery.contact_name}`]].filter(Boolean);
+  const [side, setSide] = useState(initialSide || sides[0][0]);
+  const [channels, setChannels] = useState(["email"]);
+  const [body, setBody] = useState("");
+  const [error, setError] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const stop = task[side];
+  const toggle = (c) => setChannels(channels.includes(c) ? channels.filter((x) => x !== c) : [...channels, c]);
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!channels.length) return setError("Choose email or text");
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await api(`/driver/tasks/${task.id}/message`, { method: "POST", body: { side, channels, body } });
+      const results = res.message_results || [];
+      results.forEach((r) => toast(`${r.channel === "sms" ? "Text" : "Email"} ${r.status === "sent" ? "sent" : r.status === "not_sent" ? "not sent" : "failed"}${r.error ? ` – ${r.error}` : ""}`, r.status === "sent" ? undefined : "error"));
+      onSent(res, results.some((r) => r.status === "sent"));
+    } catch (err) {
+      setError(err.message);
+      setBusy(false);
+    }
+  };
+  const quick = ["I'm on my way and will be with you shortly.", "I've arrived. Please come to the door.", "I'm running about 15 minutes late. Sorry for the delay."];
+  return (
+    <Modal open onClose={onClose} title="Message customer">
+      <form className="stack" onSubmit={submit}>
+        {error && <Alert type="error">{error}</Alert>}
+        {sides.length > 1 && (
+          <Field label="Send to" htmlFor="mc-side">
+            <select id="mc-side" className="select" value={side} onChange={(e) => setSide(e.target.value)}>{sides.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
+          </Field>
+        )}
+        <div className="field">
+          <span className="label">Send by</span>
+          <label className="checkbox"><input type="checkbox" checked={channels.includes("email")} onChange={() => toggle("email")} disabled={!stop?.contact_email} /> Email {stop?.contact_email ? <span className="small muted">{stop.contact_email}</span> : <span className="small muted">(no email on the booking)</span>}</label>
+          <label className="checkbox"><input type="checkbox" checked={channels.includes("sms")} onChange={() => toggle("sms")} disabled={!task.sms_available} /> Text message {task.sms_available ? <span className="small muted">{stop?.contact_phone}</span> : <span className="small muted">(not set up yet – call instead)</span>}</label>
+        </div>
+        <Field label="Message" htmlFor="mc-body" hint={`${body.length}/500`}>
+          <textarea id="mc-body" className="textarea" rows={4} maxLength={500} value={body} onChange={(e) => setBody(e.target.value)} required />
+        </Field>
+        <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+          {quick.map((q) => <button type="button" key={q} className="btn btn-ghost btn-sm" onClick={() => setBody(q)}>{q.split(".")[0]}</button>)}
+        </div>
+        <button className="btn btn-primary" disabled={busy}><MessageSquare size={16} /> {busy ? "Sending…" : "Send message"}</button>
+      </form>
+    </Modal>
   );
 }
 
@@ -103,7 +206,7 @@ function ProofForm({ task, kind, defaultPerson, onSaved, onCancel }) {
     person_name: existing?.person_name || defaultPerson || "",
     occurred_at: toLocalInput(existing?.occurred_at || new Date()),
     notes: existing?.notes || "",
-    location: existing?.location || (kind === "depot" ? "Main depot" : ""),
+    location: existing?.location || (kind === "depot" ? task.depot_address || "Main depot" : ""),
   });
   const [photos, setPhotos] = useState(existing?.photos || []);
   const [signature, setSignature] = useState(existing?.signature_data || null);
@@ -179,11 +282,13 @@ function SavedProof({ kind, proof, confirmLabel, onConfirm, onEdit, busy, note }
 
 export default function Task() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const toast = useToast();
   const { data: task, loading, error, setData } = useApi(`/driver/tasks/${id}`);
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState(null);
   const [issue, setIssue] = useState(null);
+  const [messaging, setMessaging] = useState(null);
 
   if (loading && !task) return <Spinner />;
   if (error) return <Alert type="error">{error.status === 404 ? "This task isn't assigned to you." : error.message}</Alert>;
@@ -192,8 +297,11 @@ export default function Task() {
     setBusy(true);
     try {
       const geo = await currentPosition();
-      setData(await api(`/driver/tasks/${task.id}/${action}`, { method: "POST", body: { geo } }));
+      const updated = await api(`/driver/tasks/${task.id}/${action}`, { method: "POST", body: { geo } });
       toast(message);
+      // A closed task is finished – back to the driver's task list.
+      if (action === "close") return navigate("/driver", { replace: true });
+      setData(updated);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err) {
       toast(err.message, "error");
@@ -255,10 +363,18 @@ export default function Task() {
       {finished && <Alert type="success" title="Task closed">{kind === "collection" ? "The delivery has been set up as a separate task." : "All proof has been saved to the job. Thank you."}</Alert>}
       {status === "cancelled" && <Alert type="warning" title="Task cancelled">This task was cancelled by the office.</Alert>}
 
+      {(task.instructions || task.scheduled_for) && (
+        <section className="card stack" style={{ gap: 8 }}>
+          {task.scheduled_for && <div className="row" style={{ gap: 6 }}><CalendarClock size={16} /> <strong>{dateTime(task.scheduled_for)}</strong></div>}
+          {task.instructions && <Alert type="info" title="Instructions from the office"><span style={{ whiteSpace: "pre-wrap" }}>{task.instructions}</span></Alert>}
+        </section>
+      )}
+
       {next}
 
-      {kind !== "delivery" && task.collection && <Stop stop={task.collection} title="Collect from" active={!finished && side === "collection"} />}
-      {kind !== "collection" && task.delivery && <Stop stop={task.delivery} title="Deliver to" active={!finished && side === "delivery"} />}
+      {kind !== "delivery" && task.collection && <Stop stop={task.collection} title="Collect from" active={!finished && side === "collection"} onMessage={finished ? null : () => setMessaging("collection")} />}
+      {kind === "collection" && task.depot_address && <Depot address={task.depot_address} />}
+      {kind !== "collection" && task.delivery && <Stop stop={task.delivery} title="Deliver to" active={!finished && side === "delivery"} onMessage={finished ? null : () => setMessaging("delivery")} />}
       <Items task={task} />
 
       {shownProofs.map((k) => <div key={k} className="card"><h3>{PROOFS[k].title}</h3><ProofView proof={proofs[k]} kind={k} /></div>)}
@@ -266,6 +382,8 @@ export default function Task() {
       {!finished && status !== "cancelled" && (
         <button className="btn btn-ghost" style={{ alignSelf: "flex-start" }} onClick={() => setIssue({ body: "", mark_exception: false })}><AlertTriangle size={16} /> Report a problem</button>
       )}
+
+      {messaging && <MessageCustomer task={task} side={messaging} onClose={() => setMessaging(null)} onSent={(t, ok) => { setData(t); if (ok) setMessaging(null); }} />}
 
       <Modal open={!!issue} onClose={() => setIssue(null)} title="Report a problem">
         {issue && (

@@ -4,7 +4,7 @@ module Api
       class SettingsController < BaseController
         before_action :admin_only!, only: :update
 
-        def show = render(json: Setting.all_values)
+        def show = render(json: Setting.all_values.merge("messaging" => { "email" => ApplicationMailer.delivers?, "sms" => SmsSender.available? }))
 
         def update
           values = params.require(:settings).permit(*Setting::DEFAULTS.keys).to_h
