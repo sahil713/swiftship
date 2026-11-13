@@ -3,7 +3,7 @@
 databases:
   - name: swiftship-db
     plan: free
-    region: frankfurt
+    region: oregon
     databaseName: swiftship
     user: swiftship
 
@@ -12,7 +12,7 @@ services:
     name: swiftship-api
     runtime: docker
     plan: free
-    region: frankfurt
+    region: oregon
     rootDir: backend
     dockerfilePath: ./Dockerfile
     dockerContext: .
