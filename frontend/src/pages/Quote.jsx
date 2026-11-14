@@ -65,7 +65,7 @@ function PostcodeField({ id, label, value, onChange, onResult }) {
         {!check ? "UK postcodes only"
           : !check.ok ? check.message
           : check.review ? `⚠ ${check.message}`
-          : `✓ ${check.region}${check.district ? ` · ${check.district}` : ""}`}
+          : `✓ ${check.place || [check.district, check.region].filter(Boolean).join(" · ")}`}
       </span>
     </div>
   );
@@ -77,7 +77,7 @@ function AddressBlock({ prefix, title, form, set, saved, onPick, checkResult }) 
       <legend style={{ display: "contents" }}><h3>{title}</h3></legend>
       <div className="row" style={{ marginBottom: 12 }}>
         <MapPin size={16} color="var(--accent)" />
-        <span className="small"><strong className="mono">{form[`${prefix}_postcode`]}</strong>{checkResult?.district ? ` · ${checkResult.district}` : ""}</span>
+        <span className="small"><strong className="mono">{form[`${prefix}_postcode`]}</strong>{checkResult?.place || checkResult?.district ? ` · ${checkResult.place || checkResult.district}` : ""}</span>
       </div>
       {saved?.length > 0 && (
         <Field label="Use a saved address" htmlFor={`${prefix}-saved`}>

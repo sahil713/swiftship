@@ -4,7 +4,7 @@ require "net/http"
 # Falls back to format-only validation when the API is unreachable, so the
 # service keeps working offline.
 class PostcodeLookup
-  Result = Struct.new(:exists, :verified, :country, :region, :district, :latitude, :longitude, keyword_init: true)
+  Result = Struct.new(:exists, :verified, :country, :region, :district, :ward, :place, :latitude, :longitude, keyword_init: true)
 
   BASE_URL = "https://api.postcodes.io/postcodes/".freeze
 
@@ -13,7 +13,7 @@ class PostcodeLookup
     return Result.new(exists: false, verified: true) unless formatted
     return Result.new(exists: true, verified: false) if Rails.env.test? || ENV["POSTCODE_LOOKUP"] == "off"
 
-    key = "postcode-lookup/v2/#{formatted}"
+    key = "postcode-lookup/v3/#{formatted}"
     cached = Rails.cache.read(key)
     return cached if cached
 
@@ -30,8 +30,9 @@ class PostcodeLookup
     case response
     when Net::HTTPSuccess
       data = JSON.parse(response.body).fetch("result", {})
+      place = PlaceName.for_point(data["latitude"], data["longitude"], ward: data["admin_ward"], district: data["admin_district"], region: data["region"])
       Result.new(exists: true, verified: true, country: data["country"], region: data["region"], district: data["admin_district"],
-                 latitude: data["latitude"], longitude: data["longitude"])
+                 ward: data["admin_ward"], place:, latitude: data["latitude"], longitude: data["longitude"])
     when Net::HTTPNotFound
       Result.new(exists: false, verified: true)
     else

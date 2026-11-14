@@ -8,11 +8,11 @@
 #                so staff review it before quoting.
 #   * normal   – ok: true. Everything else in the UK.
 class ServiceArea
-  Result = Struct.new(:ok, :postcode, :area, :delivery_area, :message, :verified, :district,
+  Result = Struct.new(:ok, :postcode, :area, :delivery_area, :message, :verified, :district, :place,
                       :review, :review_level, :review_reason, keyword_init: true) do
     def as_json(*)
       {
-        ok:, postcode:, area:, message:, verified:, district:,
+        ok:, postcode:, area:, message:, verified:, district:, place:,
         review: review || false, review_level:, review_reason:,
         zone: delivery_area&.zone, region: delivery_area&.name,
         surcharge_pence: delivery_area&.surcharge_pence.to_i,
@@ -65,7 +65,7 @@ class ServiceArea
       return Result.new(ok: false, postcode:, area:, message: IRELAND_MESSAGE)
     end
 
-    base = { ok: true, postcode:, area:, delivery_area:, verified: found&.verified || false, district: found&.district }
+    base = { ok: true, postcode:, area:, delivery_area:, verified: found&.verified || false, district: found&.district, place: found&.place }
     level, reason = review_for(area, found)
     if level
       Result.new(**base, review: true, review_level: level, review_reason: reason,

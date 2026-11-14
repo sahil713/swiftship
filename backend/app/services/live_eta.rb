@@ -25,20 +25,17 @@ module LiveEta
     2 * EARTH_RADIUS_KM * Math.asin(Math.sqrt(a))
   end
 
-  # Nearest place to a GPS point, e.g. "Croydon, CR0", via postcodes.io. nil when unknown or offline.
+  # Nearest street and town to a GPS point, e.g. "Tunnard Street, Witham, Boston". nil when unknown or offline.
   def place_name(lat, lng)
     return nil if Rails.env.test? || ENV["POSTCODE_LOOKUP"] == "off"
 
-    key = "live-place/v1/#{lat.to_f.round(3)},#{lng.to_f.round(3)}"
-    Rails.cache.fetch(key, expires_in: 1.day, skip_nil: true) do
+    area = Rails.cache.fetch("live-area/v1/#{lat.to_f.round(3)},#{lng.to_f.round(3)}", expires_in: 1.day, skip_nil: true) do
       uri = URI("https://api.postcodes.io/postcodes?lon=#{lng.to_f}&lat=#{lat.to_f}&limit=1&radius=2000")
       response = Net::HTTP.start(uri.host, uri.port, use_ssl: true, open_timeout: 2, read_timeout: 3) { _1.get(uri.request_uri) }
       result = response.is_a?(Net::HTTPSuccess) ? Array(JSON.parse(response.body)["result"]).first : nil
-      next nil unless result
-
-      area = result["admin_ward"].presence || result["admin_district"]
-      [area, result["outcode"]].compact_blank.uniq.join(", ").presence
-    end
+      result&.slice("admin_ward", "admin_district", "region")
+    end || {}
+    PlaceName.for_point(lat, lng, ward: area["admin_ward"], district: area["admin_district"], region: area["region"], precision: 3)
   rescue StandardError => e
     Rails.logger.warn("Reverse geocode failed: #{e.class}: #{e.message}")
     nil
