@@ -100,26 +100,29 @@ function LiveDelivery({ live }) {
   const loc = live.location;
   const dest = live.destination || {};
   const driver = live.driver_name ? `${live.driver_name}, your driver,` : "Your driver";
+  const toDepot = live.stage === "to_depot";
   return (
     <motion.div className="card" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} style={{ marginBottom: 20 }}>
-      <div className="row" style={{ gap: 8, color: "var(--accent)", fontWeight: 700 }}><Truck size={18} /> Your driver is on the way</div>
+      <div className="row" style={{ gap: 8, color: "var(--accent)", fontWeight: 700 }}><Truck size={18} /> {toDepot ? "Your items have been collected and are on the way to our depot" : "Your driver is on the way"}</div>
       {loc ? (
         <>
           <dl className="dl" style={{ marginTop: 16 }}>
-            <dt><Clock size={14} style={{ display: "inline", verticalAlign: -2 }} /> Arriving</dt>
-            <dd>{live.eta_at ? <><strong style={{ fontSize: "1.15rem" }}>around {timeOnly(live.eta_at)}</strong> <span className="muted">(about {inMinutes(live.eta_minutes)})</span></> : "—"}</dd>
+            {!toDepot && <>
+              <dt><Clock size={14} style={{ display: "inline", verticalAlign: -2 }} /> Arriving</dt>
+              <dd>{live.eta_at ? <><strong style={{ fontSize: "1.15rem" }}>around {timeOnly(live.eta_at)}</strong> <span className="muted">(about {inMinutes(live.eta_minutes)})</span></> : "—"}</dd>
+            </>}
             <dt><MapPin size={14} style={{ display: "inline", verticalAlign: -2 }} /> Driver is now</dt>
             <dd>{loc.place ? `near ${loc.place}` : "on the road"}</dd>
-            <dt><Route size={14} style={{ display: "inline", verticalAlign: -2 }} /> Distance</dt>
-            <dd>{live.distance_miles != null ? `about ${live.distance_miles} miles to ${dest.label}` : dest.label}</dd>
+            {!toDepot && <dt><Route size={14} style={{ display: "inline", verticalAlign: -2 }} /> Distance</dt>}
+            {!toDepot && <dd>{live.distance_miles != null ? `about ${live.distance_miles} miles to ${dest.label}` : dest.label}</dd>}
           </dl>
           <LiveMap from={loc} to={dest} />
           <p className="small muted" style={{ marginTop: 8 }}>
-            Location updated {minutesAgo(loc.updated_at) === 0 ? "just now" : `${minutesAgo(loc.updated_at)} min ago`}. Arrival time is an estimate and can change with traffic.
+            Location updated {minutesAgo(loc.updated_at) === 0 ? "just now" : `${minutesAgo(loc.updated_at)} min ago`}.{toDepot ? " We'll show your delivery driver's arrival time once your items are out for delivery." : " Arrival time is an estimate and can change with traffic."}
           </p>
         </>
       ) : (
-        <p style={{ marginTop: 10 }}>{driver} has your items and is heading to {dest.label}. Live location and arrival time will appear here once their phone shares a position.</p>
+        <p style={{ marginTop: 10 }}>{driver} has your items and is heading to {dest.label}. {toDepot ? "Their live location" : "Live location and arrival time"} will appear here once their phone shares a position.</p>
       )}
     </motion.div>
   );

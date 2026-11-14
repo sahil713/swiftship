@@ -42,12 +42,16 @@ class DriverTask < ApplicationRecord
   def finished_at = closed_at || completed_at
   # Items are on board and the driver is driving to the delivery address.
   def heading_to_delivery? = (delivery? && status == "started") || (direct? && status == "collected")
+  # Collection task: items picked up, driver taking them to the depot.
+  def heading_to_depot? = collection? && status == "collected"
+  # Items are on board – the driver's phone shares its position with the customer.
+  def sharing_location? = heading_to_delivery? || heading_to_depot?
 
   # Latest phone position, sent every ~30s while the driver is on the way to the customer.
   def record_location!(geo)
     return unless geo[:latitude] && geo[:longitude]
     moved = live_latitude.nil? || LiveEta.haversine_km(live_latitude, live_longitude, geo[:latitude], geo[:longitude]) > 0.2
-    place = heading_to_delivery? && (moved || live_place.blank?) ? LiveEta.place_name(geo[:latitude], geo[:longitude]) : nil
+    place = sharing_location? && (moved || live_place.blank?) ? LiveEta.place_name(geo[:latitude], geo[:longitude]) : nil
     update_columns(live_latitude: geo[:latitude], live_longitude: geo[:longitude], live_accuracy_m: geo[:accuracy_m],
                    live_place: place || (moved ? nil : live_place), live_located_at: Time.current)
   end

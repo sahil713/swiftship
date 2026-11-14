@@ -246,24 +246,26 @@ class Booking < ApplicationRecord
 
   LIVE_LOCATION_MAX_AGE = 20.minutes
 
-  # After pickup, while the driver is on the way to the delivery address: where they are,
-  # how far away and roughly when they'll arrive. Positions are rounded to ~100 m.
+  # After pickup, while the driver has the items: where they are and, on the way to the
+  # delivery address, how far away and roughly when they'll arrive. Positions are rounded to ~100 m.
+  # stage: "to_delivery" (heading to the customer) or "to_depot" (collected, taking items to our depot).
   def live_tracking
-    task = driver_tasks.detect(&:heading_to_delivery?)
+    task = driver_tasks.detect(&:heading_to_delivery?) || driver_tasks.detect(&:heading_to_depot?)
     return nil unless task
 
-    live = { stage: "on_the_way", driver_name: task.driver&.name.to_s.split.first, location: nil,
+    to_depot = task.heading_to_depot?
+    live = { stage: to_depot ? "to_depot" : "to_delivery", driver_name: task.driver&.name.to_s.split.first, location: nil,
              distance_km: nil, distance_miles: nil, eta_minutes: nil, eta_at: nil,
-             destination: { label: "#{delivery_city}, #{delivery_postcode.to_s.split.first}" } }
-    dest = PostcodeLookup.call(delivery_postcode)
-    live[:destination].merge!(latitude: dest.latitude.round(3), longitude: dest.longitude.round(3)) if dest.latitude
+             destination: { label: to_depot ? "our depot" : "#{delivery_city}, #{delivery_postcode.to_s.split.first}" } }
+    dest = to_depot ? nil : PostcodeLookup.call(delivery_postcode)
+    live[:destination].merge!(latitude: dest.latitude.round(3), longitude: dest.longitude.round(3)) if dest&.latitude
 
     fresh = task.live_located_at && task.live_located_at > LIVE_LOCATION_MAX_AGE.ago
     return live unless fresh
 
     live[:location] = { latitude: task.live_latitude.to_f.round(3), longitude: task.live_longitude.to_f.round(3),
                         place: task.live_place, updated_at: task.live_located_at }
-    if dest.latitude
+    if dest&.latitude
       eta = LiveEta.estimate(task.live_latitude, task.live_longitude, dest.latitude, dest.longitude)
       live.merge!(eta, eta_at: task.live_located_at + eta[:eta_minutes].minutes)
     end
