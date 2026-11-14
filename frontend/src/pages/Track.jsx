@@ -19,7 +19,7 @@ export default function Track() {
     setState({ loading: true, data: null, error: null });
     api(`/track/${encodeURIComponent(trackingNumber)}`)
       .then((data) => setState({ loading: false, data, error: null }))
-      .catch((err) => setState({ loading: false, data: null, error: err.status === 404 ? "We couldn't find a shipment with that tracking number. Check it and try again." : err.message }));
+      .catch((err) => setState({ loading: false, data: null, error: err.status === 404 ? "We couldn't find a shipment with that tracking number or booking reference. Check it and try again." : err.message }));
   }, [trackingNumber]);
 
   const submit = (e) => {
@@ -35,10 +35,10 @@ export default function Track() {
         <div className="container">
           <div className="eyebrow"><PackageSearch size={14} /> Tracking</div>
           <h1>Track your shipment</h1>
-          <p className="lead">Enter the tracking number from your confirmation email (it starts with SSUK). Signed in? Your orders are in <a href="/account">your account</a>.</p>
+          <p className="lead">Enter the tracking number (starts with SSUK) or booking reference (starts with SS-) from your confirmation email. Signed in? Your orders are in <a href="/account">your account</a>.</p>
           <form className="track-form" onSubmit={submit} style={{ marginTop: 20 }}>
             <label htmlFor="tn" className="sr-only">Tracking number</label>
-            <input id="tn" className="input" placeholder="SSUK0123456789" value={input} onChange={(e) => setInput(e.target.value)} autoComplete="off" spellCheck={false} />
+            <input id="tn" className="input" placeholder="SSUK0123456789 or SS-2611-ABC123" value={input} onChange={(e) => setInput(e.target.value)} autoComplete="off" spellCheck={false} />
             <button className="btn btn-primary"><Search size={16} /> Track</button>
           </form>
         </div>
