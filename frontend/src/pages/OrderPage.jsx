@@ -215,7 +215,7 @@ export default function OrderPage({ embedded = false }) {
             <div className="price-total"><span>Total</span><span className="amount">{money(b.price_pence)}</span></div>
             {!b.confirmed_price_pence && <p className="small muted" style={{ marginTop: 12, marginBottom: 0 }}>Awaiting confirmation from our team. The price may change if item details are incomplete or inaccurate.</p>}
             {b.payments.filter((p) => p.refunded_pence > 0).map((p) => (
-              <p key={p.id} className="small" style={{ marginTop: 12, marginBottom: 0 }}>Refunded {money(p.refunded_pence)} to {p.card_brand} •••• {p.card_last4}</p>
+              <p key={p.id} className="small" style={{ marginTop: 12, marginBottom: 0 }}>Refunded {money(p.refunded_pence)}{p.card_last4 ? ` to ${p.card_brand} •••• ${p.card_last4}` : ""}</p>
             ))}
           </div> : (
             <div className="card">

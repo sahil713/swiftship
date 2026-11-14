@@ -146,9 +146,26 @@ class Booking < ApplicationRecord
     raise ArgumentError, "Unknown payment status" unless PAYMENT_STATUSES.include?(new_status)
     return if payment_status == new_status
     old = payment_status
-    update!(payment_status: new_status)
-    AuditLog.record!(self, user:, action: "payment_status_changed", reason:,
-                     changes: { "payment_status" => [PAYMENT_STATUS_LABELS[old], PAYMENT_STATUS_LABELS[new_status]] })
+    transaction do
+      update!(payment_status: new_status)
+      sync_manual_payment!(note: reason)
+      AuditLog.record!(self, user:, action: "payment_status_changed", reason:,
+                       changes: { "payment_status" => [PAYMENT_STATUS_LABELS[old], PAYMENT_STATUS_LABELS[new_status]] })
+    end
+  end
+
+  # Keeps the Payments list in line with a status set by hand (or automatically on Booked):
+  # marking Paid records a manual payment for whatever is still owed; moving back to
+  # Pending/Failed/Cancelled removes those manual records again (the audit log keeps the history).
+  def sync_manual_payment!(note: nil)
+    if payment_status == "paid"
+      outstanding = price_pence.to_i - paid_pence
+      return unless outstanding.positive?
+      payments.create!(amount_pence: outstanding, status: "succeeded", provider: "manual",
+                       provider_reference: note.presence || "Marked as paid")
+    elsif %w[unpaid failed cancelled].include?(payment_status)
+      payments.where(provider: "manual", refunded_pence: 0).destroy_all
+    end
   end
 
   def transition_to!(new_status, user: nil, note: nil, location: nil, customer_visible: true, force: false)
@@ -170,6 +187,7 @@ class Booking < ApplicationRecord
       save!
       status_events.create!(status: new_status, user:, note:, location:, customer_visible:)
       if auto_paid
+        sync_manual_payment!(note: "Marked as paid when the booking was confirmed")
         AuditLog.record!(self, user:, action: "payment_status_changed", reason: "Set automatically when the booking was marked Booked",
                          changes: { "payment_status" => [PAYMENT_STATUS_LABELS[old_payment], "Paid"] })
       end
@@ -185,7 +203,10 @@ class Booking < ApplicationRecord
     if status == "quote_requested"
       transition_to!("awaiting_payment", user:, note: note || "Price confirmed at #{Money.format(pence)}")
     else
-      save!
+      transaction do
+        save!
+        sync_manual_payment! # a booking already marked Paid gets its payment recorded at the new price
+      end
     end
   end
 

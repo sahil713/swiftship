@@ -213,10 +213,10 @@ export default function Booking() {
 
           <div className="card stack">
             <h3 style={{ margin: 0 }}>Payments</h3>
-            {b.payments.length === 0 ? <p className="muted small" style={{ margin: 0 }}>No payments yet.</p> : b.payments.map((p) => (
+            {b.payments.length === 0 ? <p className="muted small" style={{ margin: 0 }}>{b.payment_status === "paid" ? "Marked as paid, but no amount is recorded because this booking has no price. Set the agreed price to record it." : "No payments yet."}</p> : b.payments.map((p) => (
               <div key={p.id} className="small">
                 <div className="row-between"><strong>{money(p.amount_pence)}</strong><Badge tone={p.status === "succeeded" ? "good" : "warning"} plain>{humanize(p.status)}</Badge></div>
-                <div className="muted">{p.card_brand} •••• {p.card_last4} · {dateTime(p.created_at)}</div>
+                <div className="muted">{p.provider === "manual" ? `Recorded manually${p.provider_reference ? ` – ${p.provider_reference}` : ""}` : `${p.card_brand} •••• ${p.card_last4}`} · {dateTime(p.created_at)}</div>
                 {p.refunded_pence > 0 && <div>Refunded {money(p.refunded_pence)}</div>}
                 {isAdmin && p.amount_pence - p.refunded_pence > 0 && <button className="btn btn-danger btn-sm" style={{ marginTop: 8 }} onClick={() => setRefund({ payment: p, amount: poundsFromPence(p.amount_pence - p.refunded_pence), reason: "" })}>Refund…</button>}
               </div>
