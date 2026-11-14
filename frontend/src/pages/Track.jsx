@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Search, PackageSearch, CalendarClock, Truck, MapPin, Clock, Route } from "lucide-react";
@@ -56,7 +56,7 @@ export default function Track() {
       <section className="container" style={{ paddingBottom: 72 }}>
         {state.loading && <Spinner />}
         {state.error && <Alert type="error">{state.error}</Alert>}
-        {d?.live && <LiveDelivery live={d.live} />}
+        {d?.live && <LiveTracking live={d.live} />}
         {d && (
           <motion.div className="grid-2" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} style={{ alignItems: "start" }}>
             <div className="card">
@@ -94,49 +94,55 @@ export default function Track() {
 
 const minutesAgo = (t) => Math.max(0, Math.round((Date.now() - new Date(t)) / 60000));
 const inMinutes = (m) => (m < 60 ? `${m} min` : `${Math.floor(m / 60)} hr ${m % 60 ? `${m % 60} min` : ""}`.trim());
+const LiveMap = lazy(() => import("../components/LiveMap.jsx"));
+const HEADING = ["to_collection", "to_delivery"];
 
-// After pickup: where the driver is, how far away and when they should arrive.
-function LiveDelivery({ live }) {
+// From the moment the driver sets off until the task is closed: the stage, each step's time,
+// the driver's position, the path so far, the planned route and the arrival time.
+function LiveTracking({ live }) {
   const loc = live.location;
-  const dest = live.destination || {};
-  const driver = live.driver_name ? `${live.driver_name}, your driver,` : "Your driver";
-  const toDepot = live.stage === "to_depot";
+  const dest = live.destination;
+  const heading = HEADING.includes(live.stage);
+  const iconStyle = { display: "inline", verticalAlign: -2 };
   return (
     <motion.div className="card" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} style={{ marginBottom: 20 }}>
-      <div className="row" style={{ gap: 8, color: "var(--accent)", fontWeight: 700 }}><Truck size={18} /> {toDepot ? "Your items have been collected and are on the way to our depot" : "Your driver is on the way"}</div>
-      {loc ? (
-        <>
-          <dl className="dl" style={{ marginTop: 16 }}>
-            {!toDepot && <>
-              <dt><Clock size={14} style={{ display: "inline", verticalAlign: -2 }} /> Arriving</dt>
-              <dd>{live.eta_at ? <><strong style={{ fontSize: "1.15rem" }}>around {timeOnly(live.eta_at)}</strong> <span className="muted">(about {inMinutes(live.eta_minutes)})</span></> : "—"}</dd>
-            </>}
-            <dt><MapPin size={14} style={{ display: "inline", verticalAlign: -2 }} /> Driver is now</dt>
-            <dd>{loc.place ? `near ${loc.place}` : "on the road"}</dd>
-            {!toDepot && <dt><Route size={14} style={{ display: "inline", verticalAlign: -2 }} /> Distance</dt>}
-            {!toDepot && <dd>{live.distance_miles != null ? `about ${live.distance_miles} miles to ${dest.label}` : dest.label}</dd>}
-          </dl>
-          <LiveMap from={loc} to={dest} />
-          <p className="small muted" style={{ marginTop: 8 }}>
-            Location updated {minutesAgo(loc.updated_at) === 0 ? "just now" : `${minutesAgo(loc.updated_at)} min ago`}.{toDepot ? " We'll show your delivery driver's arrival time once your items are out for delivery." : " Arrival time is an estimate and can change with traffic."}
-          </p>
-        </>
-      ) : (
-        <p style={{ marginTop: 10 }}>{driver} has your items and is heading to {dest.label}. {toDepot ? "Their live location" : "Live location and arrival time"} will appear here once their phone shares a position.</p>
-      )}
-    </motion.div>
-  );
-}
+      <div className="row" style={{ gap: 8, color: "var(--accent)", fontWeight: 700 }}><Truck size={18} /> {live.stage_label}</div>
+      {live.driver_name && <div className="small muted" style={{ marginTop: 4 }}>Driver: {live.driver_name}</div>}
 
-// OpenStreetMap view framing the driver and the delivery area, with a pin on the driver.
-function LiveMap({ from, to }) {
-  const lats = [from.latitude, to.latitude].filter((v) => v != null);
-  const lngs = [from.longitude, to.longitude].filter((v) => v != null);
-  const pad = 0.02;
-  const bbox = [Math.min(...lngs) - pad, Math.min(...lats) - pad, Math.max(...lngs) + pad, Math.max(...lats) + pad].join(",");
-  const src = `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${from.latitude},${from.longitude}`;
-  return (
-    <iframe title="Driver location map" src={src} loading="lazy"
-      style={{ width: "100%", height: 260, border: "1px solid var(--border)", borderRadius: "var(--radius)", marginTop: 16 }} />
+      <dl className="dl" style={{ marginTop: 16 }}>
+        {heading && <>
+          <dt><Clock size={14} style={iconStyle} /> Arriving</dt>
+          <dd>{live.eta_at ? <><strong style={{ fontSize: "1.15rem" }}>around {timeOnly(live.eta_at)}</strong> <span className="muted">(about {inMinutes(live.eta_minutes)})</span></> : "Working it out…"}</dd>
+          <dt><Route size={14} style={iconStyle} /> Distance</dt>
+          <dd>{live.distance_miles != null ? `about ${live.distance_miles} miles by road to ${dest?.label}` : dest?.label}</dd>
+        </>}
+        <dt><MapPin size={14} style={iconStyle} /> Driver is now</dt>
+        <dd>{loc ? (loc.place ? `near ${loc.place}` : "on the road") : live.last_seen_at ? `last seen ${minutesAgo(live.last_seen_at)} min ago` : "waiting for the driver's phone to share its location"}</dd>
+      </dl>
+
+      {(loc || live.path?.length > 1) && (
+        <Suspense fallback={<div className="live-map" />}>
+          <LiveMap path={live.path} route={live.route} driver={loc} destination={heading ? dest : null} />
+        </Suspense>
+      )}
+      {(loc || live.path?.length > 1) && (
+        <div className="live-legend small muted">
+          <span><i /> Route driven</span>
+          {live.route && <span><i className="planned" /> Planned route</span>}
+        </div>
+      )}
+
+      <ol className="live-steps" aria-label="Progress">
+        {live.milestones.map((m) => (
+          <li key={m.label} className={m.at ? "done" : ""}>{m.label}{m.at && <time dateTime={m.at}>{timeOnly(m.at)}</time>}</li>
+        ))}
+      </ol>
+
+      <p className="small muted" style={{ marginTop: 12, marginBottom: 0 }}>
+        {loc && `Location updated ${minutesAgo(loc.updated_at) === 0 ? "just now" : `${minutesAgo(loc.updated_at)} min ago`}. `}
+        {heading && "Arrival time is an estimate and can change with traffic. "}
+        Live tracking ends when the driver completes this job.
+      </p>
+    </motion.div>
   );
 }

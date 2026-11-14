@@ -33,9 +33,9 @@ module Api
         def complete = step { @task.complete_delivery!(user: current_user, geo:) }
         def close = step { @task.close!(user: current_user, geo:) }
 
-        # Live position while the items are on board (sent every ~30s by the task page).
+        # Live position from Start until the task is closed (sent every ~30s by the task page).
         def location
-          return render(json: { error: "Location sharing only runs while you have the items on board" }, status: :unprocessable_entity) unless @task.sharing_location?
+          return render(json: { error: "Location sharing runs from starting the task until it is closed" }, status: :unprocessable_entity) unless @task.sharing_location?
           return render(json: { error: "Invalid location" }, status: :unprocessable_entity) if geo.empty?
 
           @task.record_location!(geo)

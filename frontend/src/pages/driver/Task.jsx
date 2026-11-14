@@ -39,7 +39,7 @@ function currentPosition() {
   });
 }
 
-// While the driver has the items on board (to the depot or the delivery address), sends the phone's position every
+// From starting the task until it is closed, sends the phone's position every
 // ~30s so the customer's tracking page can show where they are and when they'll arrive.
 // Runs only while this page is open (a web page can't track in the background).
 const LIVE_EVERY_MS = 30000;
@@ -78,7 +78,7 @@ function LiveLocationSharer({ taskId }) {
       <Navigation size={16} style={{ color: "var(--accent)", flexShrink: 0 }} />
       <div className="small">
         <strong>{state.status === "sharing" ? "Sharing your location with the customer" : state.status === "error" ? "Couldn't send your location – retrying" : "Starting live location…"}</strong>
-        <div className="muted">{state.place ? `Near ${state.place} · ` : ""}Keep this page open while you drive.</div>
+        <div className="muted">{state.place ? `Near ${state.place} · ` : ""}Keep this page open until you close the task.</div>
       </div>
     </div>
   );
@@ -403,7 +403,7 @@ export default function Task() {
         <ol className="task-steps" aria-label="Task progress">
           {STEPS[kind].map(([key, label]) => <li key={key} className={reached(status, key) ? "done" : ""}>{label}</li>)}
         </ol>
-        {((kind === "delivery" && status === "started") || (["direct", "collection"].includes(kind) && status === "collected")) && <div style={{ marginTop: 12 }}><LiveLocationSharer taskId={task.id} /></div>}
+        {["started", "arrived", "collected", "at_depot", "arrived_delivery", "delivered"].includes(status) && <div style={{ marginTop: 12 }}><LiveLocationSharer taskId={task.id} /></div>}
       </div>
 
       {finished && <Alert type="success" title="Task closed">{kind === "collection" ? "The delivery has been set up as a separate task." : "All proof has been saved to the job. Thank you."}</Alert>}

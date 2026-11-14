@@ -266,31 +266,48 @@ class Booking < ApplicationRecord
   end
 
   LIVE_LOCATION_MAX_AGE = 20.minutes
+  LIVE_STAGE_LABELS = {
+    "to_collection" => "Your driver is on the way to collect your items",
+    "at_collection" => "Your driver has arrived at the collection address",
+    "to_depot" => "Your items have been collected and are on the way to our depot",
+    "at_depot" => "Your items are at our depot",
+    "to_delivery" => "Your driver is on the way with your items",
+    "at_delivery" => "Your driver has arrived at the delivery address",
+    "delivered" => "Your items have been delivered"
+  }.freeze
+  MAX_PATH_POINTS = 400
 
-  # After pickup, while the driver has the items: where they are and, on the way to the
-  # delivery address, how far away and roughly when they'll arrive. Positions are rounded to ~100 m.
-  # stage: "to_delivery" (heading to the customer) or "to_depot" (collected, taking items to our depot).
+  # From the moment the driver starts a task until it is closed: the stage, each step's time,
+  # the path travelled, where the driver is now and – when heading to an address – the road
+  # route, distance and arrival time. Positions are rounded to ~10 m (path) / ~100 m (markers).
   def live_tracking
-    task = driver_tasks.detect(&:heading_to_delivery?) || driver_tasks.detect(&:heading_to_depot?)
+    task = driver_tasks.select(&:sharing_location?).max_by { _1.started_at || _1.created_at }
     return nil unless task
 
-    to_depot = task.heading_to_depot?
-    live = { stage: to_depot ? "to_depot" : "to_delivery", driver_name: task.driver&.name.to_s.split.first, location: nil,
-             distance_km: nil, distance_miles: nil, eta_minutes: nil, eta_at: nil,
-             destination: { label: to_depot ? "our depot" : "#{delivery_city}, #{delivery_postcode.to_s.split.first}" } }
-    dest = to_depot ? nil : PostcodeLookup.call(delivery_postcode)
-    live[:destination].merge!(latitude: dest.latitude.round(3), longitude: dest.longitude.round(3)) if dest&.latitude
-
+    stage = task.live_stage
+    dest = task.live_destination
     fresh = task.live_located_at && task.live_located_at > LIVE_LOCATION_MAX_AGE.ago
-    return live unless fresh
+    points = task.locations.pluck(:latitude, :longitude)
+    points = points.each_slice((points.size / MAX_PATH_POINTS.to_f).ceil).map(&:last) if points.size > MAX_PATH_POINTS
+    route = task.live_route if fresh && dest && task.live_route&.dig("dest") == dest[:key]
+    eta_at = route && Time.zone.parse(route["computed_at"].to_s)&.+(route["duration_s"].to_i)
 
-    live[:location] = { latitude: task.live_latitude.to_f.round(3), longitude: task.live_longitude.to_f.round(3),
-                        place: task.live_place, updated_at: task.live_located_at }
-    if dest&.latitude
-      eta = LiveEta.estimate(task.live_latitude, task.live_longitude, dest.latitude, dest.longitude)
-      live.merge!(eta, eta_at: task.live_located_at + eta[:eta_minutes].minutes)
-    end
-    live
+    {
+      stage:, stage_label: LIVE_STAGE_LABELS[stage], task_kind: task.kind,
+      driver_name: task.driver&.name.to_s.split.first,
+      milestones: task.milestones,
+      destination: dest && { side: dest[:side], label: dest[:label],
+                             latitude: dest[:latitude]&.round(3), longitude: dest[:longitude]&.round(3) },
+      location: fresh ? { latitude: task.live_latitude.to_f.round(4), longitude: task.live_longitude.to_f.round(4),
+                          place: task.live_place, updated_at: task.live_located_at } : nil,
+      last_seen_at: task.live_located_at,
+      path: points.map { |lat, lng| [lat.to_f.round(4), lng.to_f.round(4)] },
+      route: route && route["coords"],
+      route_source: route && route["source"],
+      distance_miles: route && (route["distance_m"] / 1609.344).round(1),
+      eta_minutes: route && [((eta_at - Time.current) / 60).ceil, 1].max,
+      eta_at:
+    }
   end
 
   private

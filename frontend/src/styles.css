@@ -545,3 +545,21 @@ main { flex: 1; }
 .timing-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .timing-chip { display: inline-flex; gap: 6px; align-items: baseline; padding: 4px 10px; border-radius: 999px; background: var(--bg-inset); font-size: 0.8rem; }
 .timing-chip strong { font-variant-numeric: tabular-nums; }
+
+/* Live driver tracking map */
+.live-map { width: 100%; height: 320px; border: 1px solid var(--border); border-radius: var(--radius); margin-top: 16px; z-index: 0; }
+.live-pin { width: 18px; height: 18px; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.4); }
+.live-pin.driver { background: #2563eb; animation: live-pulse 2s ease-out infinite; }
+.live-pin.dest { background: #f97316; }
+@keyframes live-pulse { 0% { box-shadow: 0 0 0 0 rgba(37,99,235,.55); } 100% { box-shadow: 0 0 0 14px rgba(37,99,235,0); } }
+@media (prefers-reduced-motion: reduce) { .live-pin.driver { animation: none; } }
+.live-legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 8px; }
+.live-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.live-legend i { display: inline-block; width: 18px; height: 0; border-top: 4px solid #2563eb; }
+.live-legend i.planned { border-top: 3px dashed #f97316; }
+.live-steps { list-style: none; padding: 0; margin: 16px 0 0; display: grid; gap: 8px; }
+.live-steps li { display: flex; align-items: center; gap: 10px; font-size: .92rem; color: var(--text-muted); }
+.live-steps li::before { content: ""; width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--border-strong); flex-shrink: 0; }
+.live-steps li.done { color: var(--text); }
+.live-steps li.done::before { background: var(--accent); border-color: var(--accent); }
+.live-steps li time { margin-left: auto; font-variant-numeric: tabular-nums; }

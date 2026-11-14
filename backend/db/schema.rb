@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_11_14_000002) do
+ActiveRecord::Schema[8.0].define(version: 2026_11_14_000003) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -178,6 +178,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_11_14_000002) do
     t.integer "live_accuracy_m"
     t.string "live_place"
     t.datetime "live_located_at"
+    t.jsonb "live_route"
     t.index ["booking_id", "kind"], name: "index_driver_tasks_on_booking_id_and_kind"
     t.index ["booking_id"], name: "index_driver_tasks_on_booking_id"
     t.index ["driver_id", "status"], name: "index_driver_tasks_on_driver_id_and_status"
@@ -329,6 +330,16 @@ ActiveRecord::Schema[8.0].define(version: 2026_11_14_000002) do
     t.index ["user_id"], name: "index_task_events_on_user_id"
   end
 
+  create_table "task_locations", force: :cascade do |t|
+    t.bigint "driver_task_id", null: false
+    t.decimal "latitude", precision: 10, scale: 6, null: false
+    t.decimal "longitude", precision: 10, scale: 6, null: false
+    t.integer "accuracy_m"
+    t.datetime "recorded_at", null: false
+    t.index ["driver_task_id", "recorded_at"], name: "index_task_locations_on_driver_task_id_and_recorded_at"
+    t.index ["driver_task_id"], name: "index_task_locations_on_driver_task_id"
+  end
+
   create_table "task_proofs", force: :cascade do |t|
     t.bigint "driver_task_id", null: false
     t.bigint "user_id"
@@ -393,6 +404,7 @@ ActiveRecord::Schema[8.0].define(version: 2026_11_14_000002) do
   add_foreign_key "status_events", "users"
   add_foreign_key "task_events", "driver_tasks"
   add_foreign_key "task_events", "users"
+  add_foreign_key "task_locations", "driver_tasks"
   add_foreign_key "task_proofs", "driver_tasks"
   add_foreign_key "task_proofs", "users"
 end

@@ -23,6 +23,7 @@ class DriverTask < ApplicationRecord
   belongs_to :driver, class_name: "User", optional: true
   has_many :proofs, class_name: "TaskProof", dependent: :restrict_with_exception
   has_many :events, -> { order(:occurred_at, :id) }, class_name: "TaskEvent", dependent: :restrict_with_exception
+  has_many :locations, -> { order(:recorded_at, :id) }, class_name: "TaskLocation", dependent: :delete_all
   has_many :audit_logs, as: :auditable, dependent: :restrict_with_exception
 
   validates :kind, inclusion: { in: KINDS }
@@ -44,17 +45,80 @@ class DriverTask < ApplicationRecord
   def heading_to_delivery? = (delivery? && status == "started") || (direct? && status == "collected")
   # Collection task: items picked up, driver taking them to the depot.
   def heading_to_depot? = collection? && status == "collected"
-  # Items are on board – the driver's phone shares its position with the customer.
-  def sharing_location? = heading_to_delivery? || heading_to_depot?
+  def heading_to_collection? = !delivery? && status == "started"
 
-  # Latest phone position, sent every ~30s while the driver is on the way to the customer.
-  def record_location!(geo)
-    return unless geo[:latitude] && geo[:longitude]
-    moved = live_latitude.nil? || LiveEta.haversine_km(live_latitude, live_longitude, geo[:latitude], geo[:longitude]) > 0.2
-    place = sharing_location? && (moved || live_place.blank?) ? LiveEta.place_name(geo[:latitude], geo[:longitude]) : nil
-    update_columns(live_latitude: geo[:latitude], live_longitude: geo[:longitude], live_accuracy_m: geo[:accuracy_m],
-                   live_place: place || (moved ? nil : live_place), live_located_at: Time.current)
+  # From "Start task" until the task is closed, the driver's phone shares its position.
+  SHARING_STATUSES = %w[started arrived collected at_depot arrived_delivery delivered].freeze
+  def sharing_location? = SHARING_STATUSES.include?(status)
+
+  # Where the driver is in the job, as the customer sees it.
+  def live_stage
+    return "to_collection" if heading_to_collection?
+    return "to_delivery" if heading_to_delivery?
+    return "to_depot" if heading_to_depot?
+    return "at_delivery" if at_delivery_location?
+    { "arrived" => "at_collection", "at_depot" => "at_depot", "delivered" => "delivered" }[status]
   end
+
+  # The address the driver is driving to right now (collection or delivery), or nil.
+  def live_destination
+    side = if heading_to_collection? then "collection" elsif heading_to_delivery? then "delivery" end
+    return nil unless side
+
+    postcode = booking["#{side}_postcode"]
+    found = PostcodeLookup.call(postcode)
+    { side:, key: "#{side}:#{postcode}", label: "#{booking["#{side}_city"]}, #{postcode.to_s.split.first}",
+      latitude: found.latitude, longitude: found.longitude }
+  end
+
+  # Phone position, sent every ~30s from Start until the task is closed: updates the live
+  # position, adds to the path travelled and keeps the road route to the next address fresh.
+  def record_location!(geo)
+    return unless geo[:latitude] && geo[:longitude] && sharing_location?
+    lat = geo[:latitude].to_f
+    lng = geo[:longitude].to_f
+    moved_km = live_latitude.nil? ? Float::INFINITY : LiveEta.haversine_km(live_latitude, live_longitude, lat, lng)
+    place = moved_km > 0.2 || live_place.blank? ? LiveEta.place_name(lat, lng) : nil
+
+    last = locations.last
+    if last.nil? || LiveEta.haversine_km(last.latitude, last.longitude, lat, lng) > 0.025 || last.recorded_at < 2.minutes.ago
+      locations.create!(latitude: lat, longitude: lng, accuracy_m: geo[:accuracy_m], recorded_at: Time.current)
+    end
+    update_columns(live_latitude: lat, live_longitude: lng, live_accuracy_m: geo[:accuracy_m],
+                   live_place: place || (moved_km > 0.2 ? nil : live_place), live_located_at: Time.current)
+    refresh_route!(lat, lng)
+  end
+
+  ROUTE_MAX_AGE = 3.minutes
+
+  # Recalculates the road route when the destination changed, the driver has moved 300 m+
+  # from where it was last worked out, or it's older than ROUTE_MAX_AGE.
+  def refresh_route!(lat, lng)
+    dest = live_destination
+    return update_columns(live_route: nil) if dest.nil? || dest[:latitude].nil?
+
+    current = live_route || {}
+    from = current["from"]
+    stale = current["dest"] != dest[:key] || from.nil? ||
+            LiveEta.haversine_km(from[0], from[1], lat, lng) > 0.3 ||
+            Time.zone.parse(current["computed_at"].to_s).then { _1.nil? || _1 < ROUTE_MAX_AGE.ago }
+    return unless stale
+
+    route = RouteService.route(lat, lng, dest[:latitude], dest[:longitude])
+    update_columns(live_route: route.merge(dest: dest[:key], from: [lat, lng], computed_at: Time.current.iso8601))
+  end
+
+  # Times of each step so far, for the customer's tracking page.
+  def milestones
+    steps = case kind
+            when "collection" then [["Driver set off", started_at], ["Arrived for collection", arrived_at], ["Items collected", collected_at], ["At our depot", at_depot_at]]
+            when "delivery" then [["Driver set off", started_at], ["Arrived for delivery", delivery_arrival_at], ["Delivered", delivered_at]]
+            else [["Driver set off", started_at], ["Arrived for collection", arrived_at], ["Items collected", collected_at],
+                  ["Arrived for delivery", arrived_delivery_at], ["Delivered", delivered_at]]
+            end
+    steps.map { |label, at| { label:, at: } }
+  end
+
   def delivery_arrival_at = arrived_delivery_at || (arrived_at if delivery?)
 
   # Which address the driver is working at right now.
@@ -116,6 +180,23 @@ class DriverTask < ApplicationRecord
       booking.transition_to!("out_for_delivery", user:) if delivery? && booking.status != "out_for_delivery"
       log!("started", user, nil, geo)
     end
+    send_live_link!(delivery? ? "delivery" : "collection")
+  end
+
+  # Emails/texts the customer the live tracking link when the driver sets off towards them.
+  def send_live_link!(side)
+    driver_first = driver&.name.to_s.split.first.presence || "Your driver"
+    purpose = side == "delivery" ? "deliver your items" : "collect your items"
+    url = BookingNotifier.tracking_url(booking)
+    text = "#{driver_first} is on the way to #{purpose} (#{booking.reference}). Follow them live and see the arrival time: #{url}"
+    CustomerMessenger.deliver(
+      booking, channels: %w[email sms], email_to: booking["#{side}_email"], phone_to: booking["#{side}_phone"],
+      subject: "#{ApplicationMailer::BRAND_NAME}: your driver is on the way – #{booking.reference}", sms_text: "#{ApplicationMailer::BRAND_NAME}: #{text}",
+      email: ->(to) { BookingMailer.update_email(to:, subject: "#{ApplicationMailer::BRAND_NAME}: your driver is on the way – #{booking.reference}",
+                                                  body: "#{text}\n\n— #{ApplicationMailer::BRAND_FULL}") }
+    )
+  rescue StandardError => e
+    Rails.logger.error("Live link notification failed for #{booking.reference}: #{e.class}: #{e.message}")
   end
 
   def arrive!(user:, geo: {})
@@ -145,6 +226,7 @@ class DriverTask < ApplicationRecord
       booking.transition_to!("in_transit", user:, note: "On the way to the delivery address") if direct?
       log!("collection_completed", user, nil, geo)
     end
+    send_live_link!("delivery") if direct?
   end
 
   # Collection task: items received and stored at the depot (photos + signature + depot location).

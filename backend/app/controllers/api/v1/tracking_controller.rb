@@ -5,7 +5,7 @@ module Api
       # since customers see the reference more often (emails, payment reference).
       def show
         code = params[:tracking_number].to_s.upcase.gsub(/[‐-―−]/, "-").gsub(/\s+/, "")
-        booking = Booking.includes(:service, :status_events, :proof_of_delivery, driver_tasks: :driver)
+        booking = Booking.includes(:service, :status_events, :proof_of_delivery, driver_tasks: %i[driver locations])
                          .where(tracking_number: code).or(Booking.where(reference: code)).first!
         render json: booking.tracking_json
       end
