@@ -265,49 +265,9 @@ class Booking < ApplicationRecord
     }
   end
 
-  LIVE_LOCATION_MAX_AGE = 20.minutes
-  LIVE_STAGE_LABELS = {
-    "to_collection" => "Your driver is on the way to collect your items",
-    "at_collection" => "Your driver has arrived at the collection address",
-    "to_depot" => "Your items have been collected and are on the way to our depot",
-    "at_depot" => "Your items are at our depot",
-    "to_delivery" => "Your driver is on the way with your items",
-    "at_delivery" => "Your driver has arrived at the delivery address",
-    "delivered" => "Your items have been delivered"
-  }.freeze
-  MAX_PATH_POINTS = 400
-
-  # From the moment the driver starts a task until it is closed: the stage, each step's time,
-  # the path travelled, where the driver is now and – when heading to an address – the road
-  # route, distance and arrival time. Positions are rounded to ~10 m (path) / ~100 m (markers).
+  # From the moment the driver starts a task until it is closed (see DriverTask#live_json).
   def live_tracking
-    task = driver_tasks.select(&:sharing_location?).max_by { _1.started_at || _1.created_at }
-    return nil unless task
-
-    stage = task.live_stage
-    dest = task.live_destination
-    fresh = task.live_located_at && task.live_located_at > LIVE_LOCATION_MAX_AGE.ago
-    points = task.locations.pluck(:latitude, :longitude)
-    points = points.each_slice((points.size / MAX_PATH_POINTS.to_f).ceil).map(&:last) if points.size > MAX_PATH_POINTS
-    route = task.live_route if fresh && dest && task.live_route&.dig("dest") == dest[:key]
-    eta_at = route && Time.zone.parse(route["computed_at"].to_s)&.+(route["duration_s"].to_i)
-
-    {
-      stage:, stage_label: LIVE_STAGE_LABELS[stage], task_kind: task.kind,
-      driver_name: task.driver&.name.to_s.split.first,
-      milestones: task.milestones,
-      destination: dest && { side: dest[:side], label: dest[:label],
-                             latitude: dest[:latitude]&.round(3), longitude: dest[:longitude]&.round(3) },
-      location: fresh ? { latitude: task.live_latitude.to_f.round(4), longitude: task.live_longitude.to_f.round(4),
-                          place: task.live_place, updated_at: task.live_located_at } : nil,
-      last_seen_at: task.live_located_at,
-      path: points.map { |lat, lng| [lat.to_f.round(4), lng.to_f.round(4)] },
-      route: route && route["coords"],
-      route_source: route && route["source"],
-      distance_miles: route && (route["distance_m"] / 1609.344).round(1),
-      eta_minutes: route && [((eta_at - Time.current) / 60).ceil, 1].max,
-      eta_at:
-    }
+    driver_tasks.select(&:sharing_location?).max_by { _1.started_at || _1.created_at }&.live_json
   end
 
   private

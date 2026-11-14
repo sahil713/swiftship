@@ -10,6 +10,7 @@ import PhotoPicker from "../../components/PhotoPicker.jsx";
 import ProofView from "../../components/ProofView.jsx";
 import { useToast } from "../../components/Toast.jsx";
 import { TaskKind } from "./Tasks.jsx";
+import LiveTracking from "../../components/LiveTracking.jsx";
 
 // Progress shown at the top of the task, per task type.
 const STEPS = {
@@ -43,7 +44,7 @@ function currentPosition() {
 // ~30s so the customer's tracking page can show where they are and when they'll arrive.
 // Runs only while this page is open (a web page can't track in the background).
 const LIVE_EVERY_MS = 30000;
-function LiveLocationSharer({ taskId }) {
+function LiveLocationSharer({ taskId, onLive }) {
   const [state, setState] = useState({ status: "starting", place: null, at: null });
   useEffect(() => {
     if (!navigator.geolocation) return setState({ status: "unsupported" });
@@ -54,6 +55,7 @@ function LiveLocationSharer({ taskId }) {
       try {
         const res = await api(`/driver/tasks/${taskId}/location`, { method: "POST", body: { geo: pos } });
         setState({ status: "sharing", place: res.place, at: new Date() });
+        if (res.live) onLive?.(res.live);
       } catch {
         setState((s) => ({ ...s, status: "error" }));
       }
@@ -69,7 +71,7 @@ function LiveLocationSharer({ taskId }) {
     // watchPosition only fires on movement – resend periodically so a stationary driver stays "live".
     const timer = setInterval(() => { if (latest && Date.now() - last >= LIVE_EVERY_MS) send(latest); }, LIVE_EVERY_MS);
     return () => { navigator.geolocation.clearWatch(watch); clearInterval(timer); };
-  }, [taskId]);
+  }, [taskId]); // eslint-disable-line react-hooks/exhaustive-deps -- onLive is a state setter wrapper
 
   if (state.status === "denied") return <Alert type="warning" title="Location is off">Allow location access for this site so the customer can see when you'll arrive.</Alert>;
   if (state.status === "unsupported") return null;
@@ -403,7 +405,12 @@ export default function Task() {
         <ol className="task-steps" aria-label="Task progress">
           {STEPS[kind].map(([key, label]) => <li key={key} className={reached(status, key) ? "done" : ""}>{label}</li>)}
         </ol>
-        {["started", "arrived", "collected", "at_depot", "arrived_delivery", "delivered"].includes(status) && <div style={{ marginTop: 12 }}><LiveLocationSharer taskId={task.id} /></div>}
+        {["started", "arrived", "collected", "at_depot", "arrived_delivery", "delivered"].includes(status) && (
+          <div className="stack" style={{ marginTop: 12 }}>
+            <LiveLocationSharer taskId={task.id} onLive={(live) => setData((t) => (t ? { ...t, live } : t))} />
+            {task.live && <LiveTracking live={task.live} audience="driver" />}
+          </div>
+        )}
       </div>
 
       {finished && <Alert type="success" title="Task closed">{kind === "collection" ? "The delivery has been set up as a separate task." : "All proof has been saved to the job. Thank you."}</Alert>}

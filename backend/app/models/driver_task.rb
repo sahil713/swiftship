@@ -60,8 +60,13 @@ class DriverTask < ApplicationRecord
     { "arrived" => "at_collection", "at_depot" => "at_depot", "delivered" => "delivered" }[status]
   end
 
-  # The address the driver is driving to right now (collection or delivery), or nil.
+  # The address the driver is driving to right now (collection, delivery or depot), or nil.
   def live_destination
+    if heading_to_depot?
+      postcode = self.class.depot_postcode or return nil
+      found = PostcodeLookup.call(postcode)
+      return { side: "depot", key: "depot:#{postcode}", label: "our depot", latitude: found.latitude, longitude: found.longitude }
+    end
     side = if heading_to_collection? then "collection" elsif heading_to_delivery? then "delivery" end
     return nil unless side
 
@@ -69,6 +74,58 @@ class DriverTask < ApplicationRecord
     found = PostcodeLookup.call(postcode)
     { side:, key: "#{side}:#{postcode}", label: "#{booking["#{side}_city"]}, #{postcode.to_s.split.first}",
       latitude: found.latitude, longitude: found.longitude }
+  end
+
+  # Postcode found in the depot address setting (Settings → depot address), if any.
+  def self.depot_postcode
+    address = Setting.get(:depot_address).to_s.upcase
+    match = address.scan(/[A-Z]{1,2}[0-9][A-Z0-9]? ?[0-9][A-Z]{2}/).last
+    match && UkPostcode.format(match)
+  end
+
+  LIVE_LOCATION_MAX_AGE = 20.minutes
+  LIVE_STAGE_LABELS = {
+    "to_collection" => "Your driver is on the way to collect your items",
+    "at_collection" => "Your driver has arrived at the collection address",
+    "to_depot" => "Your items have been collected and are on the way to our depot",
+    "at_depot" => "Your items are at our depot",
+    "to_delivery" => "Your driver is on the way with your items",
+    "at_delivery" => "Your driver has arrived at the delivery address",
+    "delivered" => "Your items have been delivered"
+  }.freeze
+  MAX_PATH_POINTS = 400
+
+  # Live view of this task for the tracking page (customer) and the driver's task page:
+  # stage, each step's time, the path travelled, where the driver is now and – when heading
+  # to an address – the road route, distance and arrival time. Positions are rounded to
+  # ~10 m (path) / ~100 m (markers). nil before Start and after Close.
+  def live_json
+    return nil unless sharing_location?
+
+    stage = live_stage
+    dest = live_destination
+    fresh = live_located_at && live_located_at > LIVE_LOCATION_MAX_AGE.ago
+    points = locations.pluck(:latitude, :longitude)
+    points = points.each_slice((points.size / MAX_PATH_POINTS.to_f).ceil).map(&:last) if points.size > MAX_PATH_POINTS
+    route = live_route if fresh && dest && live_route&.dig("dest") == dest[:key]
+    eta_at = route && Time.zone.parse(route["computed_at"].to_s)&.+(route["duration_s"].to_i)
+
+    {
+      stage:, stage_label: LIVE_STAGE_LABELS[stage], task_kind: kind,
+      driver_name: driver&.name.to_s.split.first,
+      milestones:,
+      destination: dest && { side: dest[:side], label: dest[:label],
+                             latitude: dest[:latitude]&.round(3), longitude: dest[:longitude]&.round(3) },
+      location: fresh ? { latitude: live_latitude.to_f.round(4), longitude: live_longitude.to_f.round(4),
+                          place: live_place, updated_at: live_located_at } : nil,
+      last_seen_at: live_located_at,
+      path: points.map { |lat, lng| [lat.to_f.round(4), lng.to_f.round(4)] },
+      route: route && route["coords"],
+      route_source: route && route["source"],
+      distance_miles: route && (route["distance_m"] / 1609.344).round(1),
+      eta_minutes: route && [((eta_at - Time.current) / 60).ceil, 1].max,
+      eta_at:
+    }
   end
 
   # Phone position, sent every ~30s from Start until the task is closed: updates the live

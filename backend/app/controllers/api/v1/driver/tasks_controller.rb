@@ -39,7 +39,7 @@ module Api
           return render(json: { error: "Invalid location" }, status: :unprocessable_entity) if geo.empty?
 
           @task.record_location!(geo)
-          render json: { ok: true, place: @task.live_place, located_at: @task.live_located_at }
+          render json: { ok: true, place: @task.live_place, located_at: @task.live_located_at, live: @task.live_json }
         end
 
         # Driver sends the sender or recipient a message by email and/or text.
@@ -110,6 +110,7 @@ module Api
                     length_cm: b.length_cm&.to_f, width_cm: b.width_cm&.to_f, height_cm: b.height_cm&.to_f, fragile: b.fragile }
           ).merge(stop.call(side).except(:instructions)) # current stop's contact/address for the task list; "instructions" stays the office's task instructions
           # Lists only need proof summaries – images are sent with the single task.
+          data[:live] = task.live_json if full
           unless full
             data["proofs"] = task.proofs.to_h { [_1.kind, { "person_name" => _1.person_name, "photo_count" => _1.photos.size }] }
             data.delete("events")
