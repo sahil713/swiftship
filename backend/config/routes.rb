@@ -82,6 +82,7 @@ Rails.application.routes.draw do
             post :proof                 # save / correct proof of delivery
             post :complete              # delivery completed
             post :close                 # close task (checks everything is recorded)
+            post :location              # live position while on the way to the delivery
             post :message
             post :report_issue
           end

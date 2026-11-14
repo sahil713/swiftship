@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_10_12_000001) do
+ActiveRecord::Schema[8.0].define(version: 2026_11_14_000001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -173,6 +173,11 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_12_000001) do
     t.datetime "at_depot_at"
     t.datetime "scheduled_for"
     t.text "instructions"
+    t.decimal "live_latitude", precision: 10, scale: 6
+    t.decimal "live_longitude", precision: 10, scale: 6
+    t.integer "live_accuracy_m"
+    t.string "live_place"
+    t.datetime "live_located_at"
     t.index ["booking_id", "kind"], name: "index_driver_tasks_on_booking_id_and_kind"
     t.index ["booking_id"], name: "index_driver_tasks_on_booking_id"
     t.index ["driver_id", "status"], name: "index_driver_tasks_on_driver_id_and_status"

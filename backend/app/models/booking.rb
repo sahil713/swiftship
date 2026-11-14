@@ -239,8 +239,35 @@ class Booking < ApplicationRecord
       to: "#{delivery_city}, #{delivery_postcode.split.first}",
       collection_date:, estimated_delivery_date:, delivered_at:,
       events: status_events.where(customer_visible: true).map { _1.as_json.except("by", :by) },
-      delivered_to: delivery_proof&.person_name || proof_of_delivery&.recipient_name
+      delivered_to: delivery_proof&.person_name || proof_of_delivery&.recipient_name,
+      live: live_tracking
     }
+  end
+
+  LIVE_LOCATION_MAX_AGE = 20.minutes
+
+  # After pickup, while the driver is on the way to the delivery address: where they are,
+  # how far away and roughly when they'll arrive. Positions are rounded to ~100 m.
+  def live_tracking
+    task = driver_tasks.detect(&:heading_to_delivery?)
+    return nil unless task
+
+    live = { stage: "on_the_way", driver_name: task.driver&.name.to_s.split.first, location: nil,
+             distance_km: nil, distance_miles: nil, eta_minutes: nil, eta_at: nil,
+             destination: { label: "#{delivery_city}, #{delivery_postcode.to_s.split.first}" } }
+    dest = PostcodeLookup.call(delivery_postcode)
+    live[:destination].merge!(latitude: dest.latitude.round(3), longitude: dest.longitude.round(3)) if dest.latitude
+
+    fresh = task.live_located_at && task.live_located_at > LIVE_LOCATION_MAX_AGE.ago
+    return live unless fresh
+
+    live[:location] = { latitude: task.live_latitude.to_f.round(3), longitude: task.live_longitude.to_f.round(3),
+                        place: task.live_place, updated_at: task.live_located_at }
+    if dest.latitude
+      eta = LiveEta.estimate(task.live_latitude, task.live_longitude, dest.latitude, dest.longitude)
+      live.merge!(eta, eta_at: task.live_located_at + eta[:eta_minutes].minutes)
+    end
+    live
   end
 
   private

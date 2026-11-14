@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Navigation, Phone, Mail, CheckCircle2, Warehouse, Truck, PenLine, AlertTriangle, ClipboardCheck, MapPin, Lock, Copy, MessageSquare, CalendarClock } from "lucide-react";
 import { api } from "../../lib/api.js";
@@ -37,6 +37,51 @@ function currentPosition() {
       { enableHighAccuracy: true, timeout: 5000, maximumAge: 60000 }
     );
   });
+}
+
+// While the driver is on the way to the delivery address, sends the phone's position every
+// ~30s so the customer's tracking page can show where they are and when they'll arrive.
+// Runs only while this page is open (a web page can't track in the background).
+const LIVE_EVERY_MS = 30000;
+function LiveLocationSharer({ taskId }) {
+  const [state, setState] = useState({ status: "starting", place: null, at: null });
+  useEffect(() => {
+    if (!navigator.geolocation) return setState({ status: "unsupported" });
+    let last = 0;
+    let latest = null;
+    const send = async (pos) => {
+      last = Date.now();
+      try {
+        const res = await api(`/driver/tasks/${taskId}/location`, { method: "POST", body: { geo: pos } });
+        setState({ status: "sharing", place: res.place, at: new Date() });
+      } catch {
+        setState((s) => ({ ...s, status: "error" }));
+      }
+    };
+    const watch = navigator.geolocation.watchPosition(
+      (p) => {
+        latest = { latitude: p.coords.latitude, longitude: p.coords.longitude, accuracy_m: Math.round(p.coords.accuracy) };
+        if (Date.now() - last >= LIVE_EVERY_MS) send(latest);
+      },
+      (err) => setState({ status: err.code === 1 ? "denied" : "error" }),
+      { enableHighAccuracy: true, maximumAge: 15000, timeout: 20000 }
+    );
+    // watchPosition only fires on movement – resend periodically so a stationary driver stays "live".
+    const timer = setInterval(() => { if (latest && Date.now() - last >= LIVE_EVERY_MS) send(latest); }, LIVE_EVERY_MS);
+    return () => { navigator.geolocation.clearWatch(watch); clearInterval(timer); };
+  }, [taskId]);
+
+  if (state.status === "denied") return <Alert type="warning" title="Location is off">Allow location access for this site so the customer can see when you'll arrive.</Alert>;
+  if (state.status === "unsupported") return null;
+  return (
+    <div className="card row" style={{ gap: 10, padding: "12px 16px" }}>
+      <Navigation size={16} style={{ color: "var(--accent)", flexShrink: 0 }} />
+      <div className="small">
+        <strong>{state.status === "sharing" ? "Sharing your location with the customer" : state.status === "error" ? "Couldn't send your location – retrying" : "Starting live location…"}</strong>
+        <div className="muted">{state.place ? `Near ${state.place} · ` : ""}Keep this page open while you drive to the delivery.</div>
+      </div>
+    </div>
+  );
 }
 
 // Local date-time string for <input type="datetime-local">.
@@ -358,6 +403,7 @@ export default function Task() {
         <ol className="task-steps" aria-label="Task progress">
           {STEPS[kind].map(([key, label]) => <li key={key} className={reached(status, key) ? "done" : ""}>{label}</li>)}
         </ol>
+        {((kind === "delivery" && status === "started") || (kind === "direct" && status === "collected")) && <div style={{ marginTop: 12 }}><LiveLocationSharer taskId={task.id} /></div>}
       </div>
 
       {finished && <Alert type="success" title="Task closed">{kind === "collection" ? "The delivery has been set up as a separate task." : "All proof has been saved to the job. Thank you."}</Alert>}
